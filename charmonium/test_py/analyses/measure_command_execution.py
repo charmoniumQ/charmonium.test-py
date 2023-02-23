@@ -1,6 +1,10 @@
 import dataclasses
 import datetime
+import os
+import pathlib
+import shlex
 import subprocess
+import textwrap
 from typing import Iterable, Mapping
 
 import psutil
@@ -22,7 +26,7 @@ class ComputeResource:
 class CompletedProcess:
     command: tuple[str, ...]
     env: Mapping[str, str]
-    cwd: tuple[str, ...]
+    cwd: pathlib.Path
     resource: ComputeResource
     status: int
     start: datetime.datetime
@@ -37,6 +41,40 @@ class CompletedProcess:
     def stderr(self) -> str:
         return self.stderr_b.decode()
 
+    @property
+    def env_command(self) -> tuple[str, ...]:
+        return (
+            "env",
+            f"--chdir={self.cwd}",
+            "-",
+            *(
+                f"{key}={val}"
+                for key, val in self.env_override.items()
+            ),
+            *self.command
+        )
+
+    def raise_for_status(self) -> None:
+        if self.status != 0:
+            raise CalledProcessError(self)
+
+
+@dataclasses.dataclass
+class CalledProcessError:
+    process: CompletedProcess
+    def __str__(self) -> str:
+        if 
+        return f"""
+Command: {shlex.join(process.command)}
+Status: {process.status}
+Start: {process.start.isoformat()}
+Full command: {shlex.join(process.env_command)}
+Stdout:
+{textwrap.indent(process.stdout, "  ")}
+Stderr:
+{textwrap.indent(process.stderr, "  ")}
+"""
+
 
 def measure_command_execution(
         command: tuple[str, ...],
@@ -46,6 +84,7 @@ def measure_command_execution(
 ) -> CompletedProcess:
     env = {} if clear_env else os.environ
     env.update(env_override)
+    cwd = cwd.resolve()
     start = datetime.datetime.now()
     process = psutil.Popen(
         command,
@@ -76,8 +115,8 @@ def measure_command_execution(
         env=env,
         cwd=cwd,
         resource=resource,
-        status=status,
+        status=process.status(),
         start=start,
-        stdout_b=stdout,
-        stderr_b=stderr,
+        stdout_b=process.stdout,
+        stderr_b=process.stderr,
     )

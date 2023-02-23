@@ -61,6 +61,7 @@
             export PYTHONNOUSERSITE=true
             export VIRTUAL_ENV=$(poetry env info --path)
             export PATH=$VIRTUAL_ENV/bin:$PATH
+            export LD_LIBRARY_PATH=${pkgs.gcc-unwrapped.lib}/lib:$LD_LIBRARY_PATH
           '';
           # TODO: write a check expression (`nix flake check`)
         };

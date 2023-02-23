@@ -1,14 +1,12 @@
 import dataclasses
 import datetime 
 import pathlib
-from typing import Mapping
+from typing import Mapping, Optional
 
-import upath
-
-from charmonium.test_py.types import Analysis, Result
-from charmonium.test_py.utils import Machine, create_temp_dir, env_command
-from charmonium.test_py.measure_comand_execution import measure_command_execution, ComputeResources
-from charmonium.test_py.file_bundle import FileBundle
+from ...types import Analysis, Result
+from ...util import create_temp_dir
+from ..measure_comand_execution import measure_command_execution, ComputeResources
+from ...file_bundle import FileBundle
 
 
 class Engine:

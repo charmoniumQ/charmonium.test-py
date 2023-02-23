@@ -65,17 +65,14 @@ $ . ~/.bashrc
 
 # How to use development tools
 
-Once in the development environment, use `./script.py` to run development tools. See the [template repository] for details. In the order of frequency of use,
-
-- `./script.py fmt` runs code formatters.
-
-- `./script.py test` runs tests and code complexity analysis.
-
-- `./script.py all-tests` runs the usual tests and more. This is intended for CI.
-
-- `./script.py docs` builds the documentation locally.
-
-- `./script.py publish` publishes the package to PyPI and deploys the documentation to GitHub pages.
+Run this command to get `lsp-mode` to work:
+```elisp
+(lsp-register-client
+ (make-lsp-client :new-connection (lsp-stdio-connection '("nix" "develop" "--command" "poetry" "run" "pylsp"))
+                  :activation-fn (lsp-activate-on "python")
+                  :priority -1
+                  :server-id 'nix-pylsp))
+```
 
 [autoimport]: https://lyz-code.github.io/autoimport/
 [isort]: https://pycqa.github.io/isort/
