@@ -1,32 +1,33 @@
-from pathlib import Path
-from typing import Iterable, Mapping, Optional
+from __future__ import annotations
+import abc
 import dataclasses
+import pathlib
+from typing import Iterable, Mapping, Optional
 
 
-class Condition:
+class Registry(abc.ABC):
+    @abc.abstractmethod
+    def get_codes(self) -> Iterable[Code]: ...
+
+
+class Code(abc.ABC):
+    @abc.abstractmethod
+    def checkout(self, path: pathlib.Path) -> None: ...
+
+
+class Condition(abc.ABC):
     pass
 
 
-class Version:
-    def checkout(self, path: Path) -> None: ...
+class Analysis(abc.ABC):
+    @abc.abstractmethod
+    def analyze(
+            self,
+            code: Code,
+            condition: Condition,
+            code_path: pathlib.Path,
+    ) -> Result: ...
 
 
-class Project:
-    def get_versions(self, path: Path) -> Iterable[Version]: ...
-
-
-class ProjectRegistry:
-    def get_projects(self) -> Iterable[Project]: ...
-
-
-class Analysis:
-    def analyze(self, code: Path) -> Result: ...
-
-
-class Result:
+class Result(abc.ABC):
     pass
-
-
-class Environment:
-    def install(self, code: Path, new_env: Path, past_env: Optional[Path]) -> None: ...
-    env: Mapping[str, str]

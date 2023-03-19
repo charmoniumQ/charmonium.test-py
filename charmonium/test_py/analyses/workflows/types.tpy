@@ -33,7 +33,7 @@ class WorkflowExecution(Result):
 
 
 @dataclasses.dataclass
-class RunWorkflow(Analysis):
+class RunWorkflow:
     storage: upath.UPath
 
     def analyze(self, code: pathlib.Path) -> Result:

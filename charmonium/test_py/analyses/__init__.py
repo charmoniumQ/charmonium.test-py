@@ -1,1 +1,1 @@
-from .git_commit import AnalyzeGitCommit as AnalyzeGitCommit
+from .git_info import GitInfo as GitInfo, GitInfoResult as GitInfoResult

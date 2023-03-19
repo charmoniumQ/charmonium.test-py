@@ -49,7 +49,7 @@ class CompletedProcess:
             "-",
             *(
                 f"{key}={val}"
-                for key, val in self.env_override.items()
+                for key, val in self.env.items()
             ),
             *self.command
         )
@@ -60,19 +60,18 @@ class CompletedProcess:
 
 
 @dataclasses.dataclass
-class CalledProcessError:
+class CalledProcessError(Exception):
     process: CompletedProcess
     def __str__(self) -> str:
-        if 
         return f"""
-Command: {shlex.join(process.command)}
-Status: {process.status}
-Start: {process.start.isoformat()}
-Full command: {shlex.join(process.env_command)}
+Command: {shlex.join(self.process.command)}
+Status: {self.process.status}
+Start: {self.process.start.isoformat()}
+Full command: {shlex.join(self.process.env_command)}
 Stdout:
-{textwrap.indent(process.stdout, "  ")}
+{textwrap.indent(self.process.stdout, "  ")}
 Stderr:
-{textwrap.indent(process.stderr, "  ")}
+{textwrap.indent(self.process.stderr, "  ")}
 """
 
 
@@ -82,7 +81,7 @@ def measure_command_execution(
         clear_env: bool = False,
         cwd: pathlib.Path = pathlib.Path(),
 ) -> CompletedProcess:
-    env = {} if clear_env else os.environ
+    env = {} if clear_env else dict(os.environ)
     env.update(env_override)
     cwd = cwd.resolve()
     start = datetime.datetime.now()
@@ -93,29 +92,28 @@ def measure_command_execution(
         env=env,
         cwd=cwd,
     )
-    process.wait()
+    status = process.wait()
     wall_time = datetime.datetime.now() - start
     with process.oneshot():
         cpu_times = process.cpu_times()
-        io_counters = process.io_counters()
+        io_counters = process.io_counters()  # type: ignore
         memory_info = process.memory_info()
         resource = ComputeResource(
             user_cpu_time=datetime.timedelta(seconds=cpu_times.user),
             system_cpu_time=datetime.timedelta(seconds=cpu_times.system),
-            idle_time=datetime.timedelta(seconds=cpu_times.system),
             max_resident_set_size=memory_info.rss,
-            max_virtual_memory_size=memory_info.vss,
+            max_virtual_memory_size=memory_info.vms,
             wall_time=wall_time,
             io_bytes_read=io_counters.read_bytes,
             io_bytes_written=io_counters.write_bytes,
             scheduler_context_switches=process.ctx_switches()
         )
-    return subprocess.CompletedProcess(
+    return CompletedProcess(
         command=command,
         env=env,
         cwd=cwd,
         resource=resource,
-        status=process.status(),
+        status=status,
         start=start,
         stdout_b=process.stdout,
         stderr_b=process.stderr,

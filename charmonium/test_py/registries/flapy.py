@@ -5,15 +5,15 @@ from typing import Iterable
 import warnings
 import re
 
-from charmonium.test_py.types import ProjectRegistry, Project
-from charmonium.test_py.projects import GitProject
+from charmonium.test_py.types import Registry
+from charmonium.test_py.codes import GitCode
 
 
 @dataclasses.dataclass(frozen=True)
-class FlaPyRegistry(ProjectRegistry):
+class FlaPyRegistry(Registry):
     csv_path: Path
 
-    def get_versions(self) -> Iterable[Project]:
+    def get_codes(self) -> Iterable[GitCode]:
         with self.csv_path.open() as file:
             reader = csv.reader(file)
             for line in reader:
@@ -22,8 +22,7 @@ class FlaPyRegistry(ProjectRegistry):
                 name = line[0]
                 repo_url = line[1]
                 rev = line[2]
-                yield GitProject(
+                yield GitCode(
                     repo_url,
-                    versions_from="fixed",
-                    fixed_versions=(rev,),
+                    rev,
                 )

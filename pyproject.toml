@@ -24,6 +24,7 @@ gitpython = "^3.1.29"
 ipython = "^8.6.0"
 psutil = "^5.9.4"
 pylsp-mypy = "^0.6.5"
+types-psutil = "^5.9.5.9"
 
 
 [build-system]
@@ -101,7 +102,7 @@ commands =
 isort = "^5.10.0"
 black = "^21.10b0"
 pylint = "^2.11.1"
-mypy = "^0.910"
+mypy = "^1.1.1"
 pytest = "^6.2.5"
 pytest-xdist = "^2.4.0"
 pytest-cov = "^3.0.0"
@@ -116,4 +117,5 @@ python = "^3.8"
 locket = "^1.0.0"
 tqdm = "^4.64.1"
 dask = "^2022.10.2"
+charmonium-cache = "^1.3"
 
