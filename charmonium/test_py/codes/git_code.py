@@ -8,8 +8,8 @@ from typing import Iterable, Optional
 
 import git
 
-from charmonium.test_py.types import Code
-from charmonium.test_py.util import create_temp_dir
+from ..types import Code
+from ..util import create_temp_dir
 
 
 @dataclasses.dataclass(frozen=True)

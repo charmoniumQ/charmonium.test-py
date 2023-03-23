@@ -1,10 +1,8 @@
 import dataclasses
 import pathlib
 import shutil
-from typing import Iterable, TypeVar, Optional, Any, Sized, Union, Callable, Mapping, ParamSpec, cast
-
-import dask
-from charmonium.cache import memoize
+from typing import Iterable, TypeVar, Optional, Any, Sized, Union, Callable, Mapping, ParamSpec, cast, TYPE_CHECKING
+from charmonium.cache import memoize, Memoized, MemoizedGroup
 
 from .util import create_temp_dir, flatten1
 from .types import Code, Result, Condition, Registry, Analysis
@@ -15,14 +13,26 @@ Return = TypeVar("Return")
 Params = ParamSpec("Params")
 
 
+if TYPE_CHECKING:
+    def delayed(func: Callable[Params, Return]) -> Callable[Params, Return]:
+        return func
+    def compute(*elem: Return) -> tuple[Return, ...]:
+        return elem
+else:
+    from dask import delayed, compute
+
+
+group = MemoizedGroup(size="10GiB")
+
+
 def load_or_compute_remotely(func: Callable[Params, Return]) -> Callable[Params, Return]:
-    memoized_func = memoize()(func)
+    memoized_func = Memoized(func=func, group=group)
     def outer_func(*args: Params.args, **kwargs: Params.kwargs) -> Return:
         if memoized_func.would_hit(*args, **kwargs):
             return memoized_func(*args, **kwargs)
         else:
-            delayed_result = dask.delayed(memoized_func)(*args, **kwargs)  # type: ignore
-            return cast(Return, delayed_result)
+            delayed_result = delayed(memoized_func)(*args, **kwargs)
+            return delayed_result
     return outer_func
 
 
@@ -35,16 +45,10 @@ class Config:
 
 def main(config: Config) -> list[Result]:
     # TODO: add aggregator, aggregates results (per-workflow analysis and inter-workflow analysis)
-    codes = flatten1(
-        dask.compute(
-            tuple(
-                dask.delayed(
-                    memoize()(lambda: list(registry.get_codes()))
-                )()
-                for registry in config.registries
-            )
-        )
-    )
+    codes = list(flatten1(
+        Memoized(func=lambda: list(registry.get_codes()), group=group)()
+        for registry in config.registries
+    ))
     results: list[Result] = []
     for code in codes:
         # with create_temp_dir() as temp_path:
@@ -52,14 +56,16 @@ def main(config: Config) -> list[Result]:
         #     for condition in config.conditions:
         #         for analysis in config.analyses:
         #             results.append(analysis.analyze(code, condition, temp_path))
-        print(code)
-    results = dask.compute(results)[0]
+        pass
+    print(len(codes))
+    results = compute(results)[0]
     return results
 
 
-from .registries import NfCoreRegistry, SnakemakeWorkflowCatalog
-main(Config(
-    registries=(SnakemakeWorkflowCatalog(),),
-    conditions=(),
-    analyses=(),
-))
+if __name__ == "__main__":
+    from .registries import TrisovicDataverseFixed
+    main(Config(
+        registries=(TrisovicDataverseFixed(),),
+        conditions=(),
+        analyses=(),
+    ))

@@ -3,9 +3,9 @@ from typing import Iterable
 import json
 import requests
 
-from charmonium.test_py.types import Registry
-from charmonium.test_py.codes import GitHubCode, WorkflowCode
-from charmonium.test_py.api import github_client
+from ..types import Registry
+from ..codes import GitHubCode, WorkflowCode
+from ..api import github_client
 
 
 @dataclasses.dataclass(frozen=True)

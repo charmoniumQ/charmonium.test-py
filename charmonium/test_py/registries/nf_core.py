@@ -2,9 +2,8 @@ import requests
 import re
 from typing import Iterable
 
-from charmonium.test_py.codes import WorkflowCode
-from charmonium.test_py.types import Registry
-
+from ..codes import WorkflowCode
+from ..types import Registry
 from .github_user import GitHubUser
 
 

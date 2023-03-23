@@ -1,7 +1,7 @@
 import dataclasses
 import pathlib
 
-from charmonium.test_py.types import Code
+from ..types import Code
 
 @dataclasses.dataclass(frozen=True)
 class WorkflowCode(Code):

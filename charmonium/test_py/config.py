@@ -1,7 +1,7 @@
 import logging, os
-logger = logging.getLogger("charmonium.freeze")
+logger = logging.getLogger("charmonium.cache.ops")
 logger.setLevel(logging.DEBUG)
-fh = logging.FileHandler("freeze.log")
+fh = logging.FileHandler(logger.name.replace(".", "_") + ".log")
 fh.setLevel(logging.DEBUG)
 fh.setFormatter(logging.Formatter("%(message)s"))
 logger.addHandler(fh)

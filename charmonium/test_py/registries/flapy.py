@@ -5,8 +5,8 @@ from typing import Iterable
 import warnings
 import re
 
-from charmonium.test_py.types import Registry
-from charmonium.test_py.codes import GitCode
+from ..types import Registry
+from ..codes import GitCode
 
 
 @dataclasses.dataclass(frozen=True)

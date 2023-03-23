@@ -4,9 +4,9 @@ import json
 import requests
 import re
 
-from charmonium.test_py.types import Registry, Code
-from charmonium.test_py.api import github_client
-from charmonium.test_py.codes import GitHubCode
+from ..types import Registry, Code
+from ..api import github_client
+from ..codes import GitHubCode
 
 
 @dataclasses.dataclass(frozen=True)
