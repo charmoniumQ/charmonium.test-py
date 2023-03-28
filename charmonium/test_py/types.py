@@ -25,7 +25,6 @@ class Analysis(abc.ABC):
             self,
             code: Code,
             condition: Condition,
-            code_path: pathlib.Path,
     ) -> Result: ...
 
 

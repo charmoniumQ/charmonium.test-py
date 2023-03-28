@@ -63,9 +63,51 @@ def main(config: Config) -> list[Result]:
 
 
 if __name__ == "__main__":
+    import datetime
+    import json
+    import os
+    import sys
+    import csv
     from .registries import TrisovicDataverseFixed
-    main(Config(
-        registries=(TrisovicDataverseFixed(),),
-        conditions=(),
-        analyses=(),
-    ))
+    from .util import walk_files, mtime
+    from .analyses.measure_command_execution import measure_docker_execution
+    codes = list(TrisovicDataverseFixed().get_codes())
+    for code in codes:
+        with create_temp_dir() as temp_dir:
+            code_dir = temp_dir / "code"
+            out_dir = temp_dir / "out"
+            code.checkout(code_dir)
+            os.sync()
+            start_time = datetime.datetime.now()
+            container = measure_docker_execution(
+                "r-runner",
+                ("Rscript", "/exec_r_files.R", str(code_dir)),
+                wall_time_limit=datetime.timedelta(hours=1),
+                mem_limit=1024 * 1024 * 1024,
+                cpus=1.0,
+                readwrite_mounts=(temp_dir,),
+            )
+            if container.status != 0:
+                files = {}
+                for file_obj_json in (code_dir / "metrics.txt").read_text().split("\n"):
+                    file_obj = json.loads(file_obj_json)
+                    files["filename"] = file_obj
+                with (code_dir / "run_log.csv").open() as f:
+                    for dir, file, error in csv.reader(f):
+                        files[file]["error"] = error
+                for src in newer_files(code_dir):
+                    if src.is_file() and mtime(src) >= start_time:
+                        dst = out_dir / src.relative_to(root)
+                        dst.parent.mkdir(exist_ok=True, parents=True)
+                        shutil.move(src, dst)
+                container.stdout_b
+                container.stderr_b
+            else:
+                sys.stdout.buffer.write(container.stdout_b)
+                sys.stderr.buffer.write(container.stderr_b)
+
+    # main(Config(
+    #     registries=(TrisovicDataverseFixed(),),
+    #     conditions=(),
+    #     analyses=(),
+    # ))
