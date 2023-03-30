@@ -72,7 +72,7 @@ def main(config: Config) -> list[Result]:
 
     results: list[Result] = []
     for analysis in config.analyses:
-        for code in tqdm.tqdm(codes):
+        for code in tqdm.tqdm(codes[1:2]):
             for condition in config.conditions:
                 results.append(analyze(analysis, code, condition))
 
