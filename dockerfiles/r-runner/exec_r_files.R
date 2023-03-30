@@ -11,6 +11,8 @@ r_files = list.files(".", pattern="\\.[Rr]\\>", recursive=FALSE, full.names=FALS
 r_files <- r_files[r_files != "exec_r_files.R"]
 print(r_files)
 
+failures = 0
+
 for (r_file in r_files) {
 	print(paste("Executing: ", r_file))
 
@@ -77,7 +79,11 @@ for (r_file in r_files) {
 	noauth <- c("status", "ERROR")
 	if (all(sapply(noauth, grepl, error))){
 		error = "not authorized"
-	}          
+	}
+
+    if (error != "success") {
+        failures <- failures + 1
+    }
 
 	# create dataframe from doi, filename, and errors to facilitate csv writing
 	new_log_data = data.frame(doi=c(main_dir), filename=c(r_file),
@@ -87,3 +93,5 @@ for (r_file in r_files) {
 				row.names=FALSE, col.names=FALSE)
 
 }
+
+quit(status=failures)

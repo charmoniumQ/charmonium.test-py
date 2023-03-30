@@ -14,6 +14,10 @@ class Code(abc.ABC):
     @abc.abstractmethod
     def checkout(self, path: pathlib.Path) -> None: ...
 
+    # TODO: checkout_command for debugging
+    # @abc.abstractmethod
+    # def checkout_command(self) -> tuple[str, ...]: ...
+
 
 class Condition(abc.ABC):
     pass
@@ -25,6 +29,7 @@ class Analysis(abc.ABC):
             self,
             code: Code,
             condition: Condition,
+            code_path: pathlib.Path,
     ) -> Result: ...
 
 

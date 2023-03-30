@@ -6,7 +6,7 @@ from ..types import Code
 @dataclasses.dataclass(frozen=True)
 class WorkflowCode(Code):
     code: Code
-    engine: str
+    executor: str
 
     def checkout(self, path: pathlib.Path) -> None:
         self.code.checkout(path)

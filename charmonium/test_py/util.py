@@ -1,17 +1,19 @@
 import contextlib
 import itertools
+import datetime
 import os
 import random
 import pathlib
 import string
 import shutil
-
-from typing import Generator, Iterable, TypeVar
+import subprocess
+import xml.etree.ElementTree
+from typing import Generator, Iterable, TypeVar, Any, Mapping
 
 
 def random_str(
         length: int,
-        alphabet: str = string.ascii_lowercase + string.digits,
+        alphabet: str = string.ascii_lowercase,
 ) -> str:
     return "".join(random.choice(alphabet) for _ in range(length))
 
@@ -71,3 +73,46 @@ def _walk_files(
 
 def mtime(path: pathlib.Path) -> datetime.datetime:
     return datetime.datetime.fromtimestamp(path.stat().st_mtime)
+
+
+def file_type(path: pathlib.Path) -> str:
+    return subprocess.run(["file", "--brief", str(path)], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def mime_type(path: pathlib.Path) -> str:
+    return subprocess.run(["file", "--brief", "--mime-type", str(path)], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def hash_path(path: pathlib.Path | str | bytes, size: int = 128) -> int:
+    import xxhash
+    hasher = {
+        128: xxhash.xxh128(),
+        64: xxhash.xxh64(),
+        32: xxhash.xxh32(),
+    }[size]
+    block_size = 1 << 14
+    with open(path, "rb") as file:
+        while True:
+            buffer = file.read(block_size)
+            if not buffer:
+                break
+            hasher.update(buffer)
+    return hasher.intdigest()
+
+
+def expect_type(typ: type[_T], data: Any) -> _T:
+    if not isinstance(data, typ):
+        raise TypeError(f"Expected type {typ} for {data}")
+    return data
+
+
+def xml_to_tuple(elem: xml.etree.ElementTree.Element) -> tuple[str, Mapping[str, str], str | None, tuple[Any, ...]]:
+    text = elem.text.strip() if elem.text else ""
+    tail = elem.tail.strip() if elem.tail else ""
+    children = tuple(xml_to_tuple(child) for child in elem)
+    return (
+        elem.tag,
+        dict(elem.attrib.items()),
+        (text + tail if text + tail else None),
+        (children if children else ()),
+    )

@@ -1,55 +1,63 @@
+import asyncio
 import dataclasses
-import requests
-import json
-import os
 import hashlib
-import subprocess
-import time
 import re
-import sys
 import pathlib
+from typing import Awaitable
+
+import charmonium.time_block
+import aiohttp
 
 from ..types import Code
 
-# See https://github.com/atrisovic/dataverse-r-study/blob/master/docker/download_dataset.py
 @dataclasses.dataclass(frozen=True)
 class DataverseDataset(Code):
     persistent_id: str
 
+    @charmonium.time_block.decor()
     def checkout(self, path: pathlib.Path) -> None:
+        asyncio.run(self.acheckout(path))
+
+    async def acheckout(self, path: pathlib.Path) -> None:
         # See https://github.com/atrisovic/dataverse-r-study/blob/master/docker/download_dataset.py
         server = "http://dataverse.harvard.edu/api/"
-        version = ":latest"
-        query = server + "datasets/:persistentId/versions/" + version + "?persistentId=" + self.persistent_id
+        url = f"{server}/datasets/:persistentId/versions/:latest?persistentId={self.persistent_id}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                response_obj = await response.json()
 
-        j = requests.get(query).json()
+            fetches = list[Awaitable[None]]()
+            for file in response_obj['data']['files']:
+                fileid = file['dataFile']['id']
+                filename = file['label']    # for ingested tabular files, restore the original file name extension:
+                if 'originalFileFormat' in file['dataFile'].keys():
+                    dlurl = f'{server}/access/datafile/{fileid}?format=original'
+                    originaltype = file['dataFile']['originalFileFormat']
+                    if originaltype == 'application/x-rlang-transport':
+                        filename = re.sub('\.[^\.]*$', '.RData', filename)
+                    elif originaltype.startswith('application/x-stata'):
+                        filename = re.sub('\.[^\.]*$', '.dta', filename)
+                    elif originaltype == 'application/x-spss-sav':
+                        filename = re.sub('\.[^\.]*$', '.sav', filename)
+                    elif originaltype == 'application/x-spss-por':
+                        filename = re.sub('\.[^\.]*$', '.por', filename)
+                    elif originaltype == 'text/csv':
+                        filename = re.sub('\.[^\.]*$', '.csv', filename)
+                else:
+                    dlurl = f'{server}/access/datafile/{fileid}'
+                fetches.append(self.fetch(session, dlurl, path / filename, file["dataFile"]["md5"]))
+            await asyncio.gather(*fetches)
 
-        for obj in j['data']['files']:
-            fileid = obj['dataFile']['id']
-            filename = obj['label']    # for ingested tabular files, restore the original file name extension:
-            if 'originalFileFormat' in obj['dataFile'].keys():
-                dlurl = server + '/access/datafile/' + str(fileid) + '?format=original'
-                originaltype = obj['dataFile']['originalFileFormat']
-                if originaltype == 'application/x-rlang-transport':
-                    filename = re.sub('\.[^\.]*$', '.RData', filename)
-                elif originaltype.startswith('application/x-stata'):
-                    filename = re.sub('\.[^\.]*$', '.dta', filename)
-                elif originaltype == 'application/x-spss-sav':
-                    filename = re.sub('\.[^\.]*$', '.sav', filename)
-                elif originaltype == 'application/x-spss-por':
-                    filename = re.sub('\.[^\.]*$', '.por', filename)
-                elif originaltype == 'text/csv':
-                    filename = re.sub('\.[^\.]*$', '.csv', filename)
-            else:
-                dlurl = server + '/access/datafile/' + str(fileid)
-            # Allow 3 retries
-            for _ in range(3):
-                result = requests.get(dlurl).content
+    @staticmethod
+    async def fetch(session: aiohttp.ClientSession, dlurl: str, dest: pathlib.Path, expected_hash: str) -> None:
+        # Allow 3 retries
+        for try_ in range(3):
+            async with session.get(dlurl) as response:
+                result = await response.read()
                 downloaded_hash = hashlib.md5(result).hexdigest()
-                expected_hash = obj["dataFile"]["md5"]
                 if downloaded_hash == expected_hash:
-                    (path / filename).parent.mkdir(exist_ok=True, parents=True)
-                    (path / filename).write_bytes(result)
+                    dest.parent.mkdir(exist_ok=True, parents=True)
+                    dest.write_bytes(result)
                     break
-            else:
-                raise RuntimeError(f"Hash mismatch: {downloaded_hash=} {expected_hash=}")
+        else:
+            raise RuntimeError(f"Hash mismatch: {downloaded_hash=} {expected_hash=}")

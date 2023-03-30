@@ -4,15 +4,18 @@ import os
 import pathlib
 import shlex
 import subprocess
+import warnings
 import textwrap
 from typing import Iterable, Mapping
 
 import psutil
 
+
 from ..util import create_temp_dir
+from ..api import docker_client
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class ComputeResource:
     user_cpu_time: datetime.timedelta
     system_cpu_time: datetime.timedelta
@@ -24,7 +27,7 @@ class ComputeResource:
     scheduler_context_switches: int | None = None
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class CompletedProcess:
     command: tuple[str, ...]
     env: Mapping[str, str]
@@ -61,7 +64,7 @@ class CompletedProcess:
             raise CalledProcessError(self)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class CalledProcessError(Exception):
     process: CompletedProcess
     def __str__(self) -> str:
@@ -123,7 +126,7 @@ def measure_command_execution(
     )
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class CompletedContainer:
     image: str
     command: tuple[str, ...]
@@ -143,12 +146,10 @@ def measure_docker_execution(
         mem_limit: int,
         cpus: float,
         privileged: bool = False,
-        readonly_mounts: tuple[pathlib.Path] = (),
-        readwrite_mounts: tuple[pathlib.Path] = (),
+        readonly_mounts: tuple[pathlib.Path, ...] = (),
+        readwrite_mounts: tuple[pathlib.Path, ...] = (),
         kill_after: datetime.timedelta = datetime.timedelta(seconds=120),
-) -> CompletedProcess:
-    import docker
-    client = docker.from_env()
+) -> CompletedContainer:
     with create_temp_dir() as temp_dir:
         resource_file = temp_dir / "resources"
         stdout_file = temp_dir / "stdout"
@@ -181,7 +182,7 @@ def measure_docker_execution(
                 for mount in readwrite_mounts
             },
         }
-        container = client.containers.run(
+        container = docker_client().containers.run(
             image,
             real_command,
             privileged=privileged,
@@ -233,116 +234,6 @@ def measure_docker_execution(
                 *real_command,
             ]),
         ]),
-        command=command,
-        image=image,
-        status=int(exit_status),
-        start=start,
-        stdout_b=stdout,
-        stderr_b=stderr,
-        resource=ComputeResource(
-            user_cpu_time=datetime.timedelta(seconds=float(user_sec)),
-            system_cpu_time=datetime.timedelta(seconds=float(system_sec)),
-            wall_time=datetime.timedelta(seconds=float(wall_time)),
-            max_resident_set_size=int(mem_kb) * 1024,
-        ),
-    )
-
-def measure_podman_execution(
-        image: str,
-        command: tuple[str, ...],
-        *,
-        wall_time_limit: datetime.timedelta,
-        mem_limit: int,
-        cpus: float,
-        privileged: bool = False,
-        readonly_mounts: tuple[pathlib.Path, ...] = (),
-        readwrite_mounts: tuple[pathlib.Path, ...] = (),
-        kill_after: datetime.timedelta = datetime.timedelta(seconds=120),
-) -> CompletedProcess:
-    import warnings; warnings.warn("remove clean=False before really using")
-    with create_temp_dir(cleanup=False) as temp_dir:
-        resource_file = temp_dir / "resources"
-        stdout_file = temp_dir / "stdout"
-        stderr_file = temp_dir / "stderr"
-        real_command = (
-            "sh",
-            "-c", shlex.join([
-                "time",
-                f"--output={resource_file}",
-                "--format=%M %S %U %e %x",
-                "timeout",
-                f"--kill-after={kill_after.total_seconds():.0f}",
-                f"{wall_time_limit.total_seconds():.0f}",
-                *command,
-            ])
-            + f" >{shlex.quote(str(stdout_file))} 2>{shlex.quote(str(stderr_file))}",
-        )
-        volumes = {
-            str(temp_dir): {"bind": str(temp_dir), "mode": "rw"},
-            **{
-                str(mount): {"bind": str(mount), "mode": "ro"}
-                for mount in readonly_mounts
-            },
-            **{
-                str(mount): {"bind": str(mount), "mode": "rw"}
-                for mount in readwrite_mounts
-            },
-        }
-        podman_command = [
-            "podman",
-            "container",
-            "run",
-            "--userns=keep-id",
-            "--detach",
-            f"--privileged={privileged!s}",
-            f"--memory={mem_limit}b",
-            f"--cpus={cpus:0.2f}",
-            *[
-                f"--volume={host_dir}:{options['bind']}:{options['mode']}"
-                for host_dir, options in volumes.items()
-            ],
-            image,
-            *real_command,
-        ]
-        container = subprocess.run(
-            podman_command,
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-        start = datetime.datetime.now()
-        try:
-            result = subprocess.run(
-                ["podman", "container", "wait", container],
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.strip()
-        finally:
-            subprocess.run(
-                ["podman", "container", "wait", container],
-                check=True,
-            ).stdout.strip()
-        time_output = (
-            resource_file.read_text().strip().split("\n")
-            if resource_file.exists()
-            else ""
-        )
-        stdout = stdout_file.read_bytes()
-        stderr = stderr_file.read_bytes()
-        try:
-            mem_kb, system_sec, user_sec, wall_time, exit_status = time_output[-1].split(" ")
-        except (ValueError, IndexError):
-            mem_kb = "0"
-            system_sec = "0.0"
-            user_sec = "0.0"
-            wall_time = "0.0"
-            exit_status = "0"
-            warnings.warn(
-                f"Could not parse time output: {time_output!r}; setting those fields to 0"
-            )
-    return CompletedContainer(
-        docker_command=shlex.join(podman_command),
         command=command,
         image=image,
         status=int(exit_status),

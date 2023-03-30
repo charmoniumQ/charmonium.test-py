@@ -1,8 +1,10 @@
 import dataclasses
 import pathlib
 import shutil
-from typing import Iterable, TypeVar, Optional, Any, Sized, Union, Callable, Mapping, ParamSpec, cast, TYPE_CHECKING
+from typing import Iterable, TypeVar, Any, Callable, Mapping, ParamSpec, cast, TYPE_CHECKING
+
 from charmonium.cache import memoize, Memoized, MemoizedGroup
+import tqdm
 
 from .util import create_temp_dir, flatten1
 from .types import Code, Result, Condition, Registry, Analysis
@@ -18,8 +20,14 @@ if TYPE_CHECKING:
         return func
     def compute(*elem: Return) -> tuple[Return, ...]:
         return elem
+    def ignore_arg(obj: Return) -> Return:
+        return obj
 else:
     from dask import delayed, compute
+    import wrapt
+    class ignore_arg(wrapt.ObjectProxy):
+        def __getfrozenstate__(self):
+            return None
 
 
 group = MemoizedGroup(size="10GiB")
@@ -45,69 +53,42 @@ class Config:
 
 def main(config: Config) -> list[Result]:
     # TODO: add aggregator, aggregates results (per-workflow analysis and inter-workflow analysis)
+    @memoize(group=group)
+    def get_codes(registry) -> list[Code]:
+        return list(registry.get_codes())
+
     codes = list(flatten1(
-        Memoized(func=lambda: list(registry.get_codes()), group=group)()
+        get_codes(registry)
         for registry in config.registries
     ))
+
+    get_codes.log_usage_report()
+
+    @memoize(group=group)
+    def analyze(analysis: Analysis, code: Code, condition: Condition) -> Result:
+        with create_temp_dir() as temp_path:
+            code.checkout(temp_path)
+            return analysis.analyze(code, condition, temp_path)
+
     results: list[Result] = []
-    for code in codes:
-        # with create_temp_dir() as temp_path:
-        #     code.checkout(temp_path)
-        #     for condition in config.conditions:
-        #         for analysis in config.analyses:
-        #             results.append(analysis.analyze(code, condition, temp_path))
-        pass
-    print(len(codes))
-    results = compute(results)[0]
+    for analysis in config.analyses:
+        for code in tqdm.tqdm(codes):
+            for condition in config.conditions:
+                results.append(analyze(analysis, code, condition))
+
+    analyze.log_usage_report()
+
+    # results = compute(results)[0]
+
     return results
 
 
 if __name__ == "__main__":
-    import datetime
-    import json
-    import os
-    import sys
-    import csv
     from .registries import TrisovicDataverseFixed
-    from .util import walk_files, mtime
-    from .analyses.measure_command_execution import measure_docker_execution
-    codes = list(TrisovicDataverseFixed().get_codes())
-    for code in codes:
-        with create_temp_dir() as temp_dir:
-            code_dir = temp_dir / "code"
-            out_dir = temp_dir / "out"
-            code.checkout(code_dir)
-            os.sync()
-            start_time = datetime.datetime.now()
-            container = measure_docker_execution(
-                "r-runner",
-                ("Rscript", "/exec_r_files.R", str(code_dir)),
-                wall_time_limit=datetime.timedelta(hours=1),
-                mem_limit=1024 * 1024 * 1024,
-                cpus=1.0,
-                readwrite_mounts=(temp_dir,),
-            )
-            if container.status != 0:
-                files = {}
-                for file_obj_json in (code_dir / "metrics.txt").read_text().split("\n"):
-                    file_obj = json.loads(file_obj_json)
-                    files["filename"] = file_obj
-                with (code_dir / "run_log.csv").open() as f:
-                    for dir, file, error in csv.reader(f):
-                        files[file]["error"] = error
-                for src in newer_files(code_dir):
-                    if src.is_file() and mtime(src) >= start_time:
-                        dst = out_dir / src.relative_to(root)
-                        dst.parent.mkdir(exist_ok=True, parents=True)
-                        shutil.move(src, dst)
-                container.stdout_b
-                container.stderr_b
-            else:
-                sys.stdout.buffer.write(container.stdout_b)
-                sys.stderr.buffer.write(container.stderr_b)
+    from .analyses import ExecuteWorkflow
 
-    # main(Config(
-    #     registries=(TrisovicDataverseFixed(),),
-    #     conditions=(),
-    #     analyses=(),
-    # ))
+    main(Config(
+        registries=(TrisovicDataverseFixed(),),
+        conditions=(Condition(),),
+        analyses=(ExecuteWorkflow(),),
+    ))

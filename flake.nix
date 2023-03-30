@@ -12,22 +12,12 @@
         name-pure-shell = "${name}-pure-shell";
         name-shell = "${name}-shell";
         name-test = "${name}-test";
-        default-python = pkgs.python310;
+        default-python = pkgs.python311;
         nix-dev-dependencies = [
-          # Alternative Pythons for Tox
-          pkgs.python37
-          pkgs.python38
-          pkgs.python39
-          pkgs.python310
           pkgs.poetry
-          
+          pkgs.hwloc
         ];
       in {
-        packages.${name} = pkgs.poetry2nix.mkPoetryApplication {
-          projectDir = ./.;
-          python = default-python;
-        };
-
         # There are two approaches to make a poetry project work in Nix:
         # 1. Use Nix to install dependencies in poetry.lock.
         # 2. Use Nix to install Poetry and use Poetry to install dependencies in poetry.lock.
@@ -51,7 +41,7 @@
           buildInputs = nix-dev-dependencies ++ [default-python];
           shellHook = ''
             if [ ! -f poetry.lock ] || [ ! -f build/poetry-$(sha1sum poetry.lock | cut -f1 -d' ') ]; then
-                poetry install --remove-untracked
+                poetry install --sync
                 if [ ! -d build ]; then
                     mkdir build
                 fi

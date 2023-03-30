@@ -1,5 +1,6 @@
 /*.log
 /.cache/
+/.cache2/
 /build/
 __pycache__/
 /.mypy_cache/
