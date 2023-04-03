@@ -5,7 +5,7 @@ import requests
 import re
 
 from ..types import Registry, Code
-from ..api import github_client
+from ..config import github_client
 from ..codes import GitHubCode
 
 

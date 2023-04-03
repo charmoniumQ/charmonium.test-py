@@ -11,7 +11,7 @@ import github
 
 from ..types import Code
 from .git_code import GitCode
-from ..api import github_client
+from ..config import github_client
 
 
 @dataclasses.dataclass(frozen=True)

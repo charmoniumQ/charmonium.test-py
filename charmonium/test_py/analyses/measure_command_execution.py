@@ -12,7 +12,7 @@ import psutil
 
 
 from ..util import create_temp_dir
-from ..api import docker_client
+from ..config import docker_client
 
 
 @dataclasses.dataclass(frozen=True)

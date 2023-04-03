@@ -9,7 +9,7 @@ from typing import Awaitable
 import charmonium.time_block
 import aiohttp
 
-from ..api import harvard_dataverse_token
+from ..config import harvard_dataverse_token
 from ..types import Code
 
 # TODO: download a Zip archive of the whole dataset instead of downloading each file individually.
@@ -27,7 +27,10 @@ class DataverseDataset(Code):
         server = "http://dataverse.harvard.edu/api/"
         url = f"{server}/datasets/:persistentId/versions/:latest?persistentId={self.persistent_id}"
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers={"X-Dataverse-key": harvard_dataverse_token}) as response:
+            async with session.get(
+                    url,
+                    headers={"X-Dataverse-key": harvard_dataverse_token()},
+            ) as response:
                 response_obj = await response.json()
 
             fetches = list[Awaitable[None]]()
@@ -62,7 +65,11 @@ class DataverseDataset(Code):
         if time_estimate > 30:
             warnings.warn(f"Might take a while: {dlurl} {size=} {time_estimate=} {timeout=}")
         try:
-            async with session.get(dlurl, headers={"X-Dataverse-key": harvard_dataverse_token}, timeout=timeout) as response:
+            async with session.get(
+                    dlurl,
+                    headers={"X-Dataverse-key": harvard_dataverse_token()},
+                    timeout=timeout,
+            ) as response:
                 result = await response.read()
         except Exception as exc:
             raise RuntimeError(f"Couldn't get: {dlurl} {timeout=} {size=}") from exc
@@ -71,4 +78,4 @@ class DataverseDataset(Code):
             dest.parent.mkdir(exist_ok=True, parents=True)
             dest.write_bytes(result)
         else:
-            raise RuntimeError(f"Hash mismatch getting: {url}\n{downloaded_hash=}\n{expected_hash=}")
+            raise RuntimeError(f"Hash mismatch getting: {dlurl}\n{downloaded_hash=}\n{expected_hash=}")

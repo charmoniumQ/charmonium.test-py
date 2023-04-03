@@ -5,7 +5,7 @@ import requests
 
 from ..types import Registry
 from ..codes import GitHubCode, WorkflowCode
-from ..api import github_client
+from ..config import github_client
 
 
 @dataclasses.dataclass(frozen=True)

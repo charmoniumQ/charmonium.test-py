@@ -3,8 +3,7 @@ import pathlib
 import shutil
 from typing import Iterable, TypeVar, Any, Callable, Mapping, ParamSpec, cast, TYPE_CHECKING
 
-from charmonium.cache import memoize, Memoized, MemoizedGroup
-import tqdm
+from charmonium.cache import memoize, Memoized, MemoizedGroup, DirObjStore
 
 from .util import create_temp_dir, flatten1
 from .types import Code, Result, Condition, Registry, Analysis
@@ -30,7 +29,11 @@ else:
             return None
 
 
-group = MemoizedGroup(size="10GiB")
+group = MemoizedGroup(
+    size="10GiB",
+    obj_store=DirObjStore(path=config.data_path() / "cache"),
+    fine_grain_persistence=True,
+)
 
 
 def load_or_compute_remotely(func: Callable[Params, Return]) -> Callable[Params, Return]:
@@ -54,7 +57,7 @@ class Config:
 def main(config: Config) -> list[Result]:
     # TODO: add aggregator, aggregates results (per-workflow analysis and inter-workflow analysis)
     @memoize(group=group)
-    def get_codes(registry) -> list[Code]:
+    def get_codes(registry: Registry) -> list[Code]:
         return list(registry.get_codes())
 
     codes = list(flatten1(
@@ -72,13 +75,13 @@ def main(config: Config) -> list[Result]:
 
     results: list[Result] = []
     for analysis in config.analyses:
-        for code in tqdm.tqdm(codes[1:2]):
+        for code in codes:
             for condition in config.conditions:
                 results.append(analyze(analysis, code, condition))
 
-    analyze.log_usage_report()
+    results = compute(results)[0]
 
-    # results = compute(results)[0]
+    analyze.log_usage_report()
 
     return results
 
