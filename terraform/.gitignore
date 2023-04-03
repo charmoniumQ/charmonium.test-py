@@ -1,0 +1,7 @@
+terraform.tfstate
+terraform.tfstate.*
+.terraform/
+.terraform.lock.hcl
+manager_key
+ssh_config
+key
