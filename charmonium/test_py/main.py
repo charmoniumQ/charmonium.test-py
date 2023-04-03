@@ -3,6 +3,7 @@ import pathlib
 import shutil
 from typing import Iterable, TypeVar, Any, Callable, Mapping, ParamSpec, cast, TYPE_CHECKING
 
+import tqdm
 from charmonium.cache import memoize, Memoized, MemoizedGroup, DirObjStore
 
 from .util import create_temp_dir, flatten1
@@ -31,7 +32,7 @@ else:
 
 group = MemoizedGroup(
     size="10GiB",
-    obj_store=DirObjStore(path=config.data_path() / "cache"),
+    # obj_store=DirObjStore(path=config.data_path() / "cache"),
     fine_grain_persistence=True,
 )
 
@@ -73,15 +74,22 @@ def main(config: Config) -> list[Result]:
             code.checkout(temp_path)
             return analysis.analyze(code, condition, temp_path)
 
+    from .codes import DataverseDataset, WorkflowCode
     results: list[Result] = []
-    for analysis in config.analyses:
-        for code in codes:
-            for condition in config.conditions:
-                results.append(analyze(analysis, code, condition))
+    for code in tqdm.tqdm(codes[:40]):
+        for analysis in config.analyses:
+            # TODO: remove this size limitation
+            if isinstance(code, WorkflowCode):
+                underlying_code = code.code
+                if isinstance(underlying_code, DataverseDataset) and underlying_code.size_est() < 8 * 1024**2:
+                    for condition in config.conditions:
+                        results.append(analyze(analysis, code, condition))
 
-    results = compute(results)[0]
+    # results = compute(results)[0]
 
     analyze.log_usage_report()
+
+    import IPython; IPython.embed()
 
     return results
 

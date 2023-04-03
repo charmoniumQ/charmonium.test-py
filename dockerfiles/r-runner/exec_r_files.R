@@ -36,7 +36,7 @@ for (r_file in r_files) {
 	#use_python("/usr/bin/python2.7")
 	source_python('/readability_analysis.py')
 	arg_temp <- paste(external_vars, collapse=' ')
-	get_readability_metrics(arg_temp, filename=r_file) 
+	get_readability_metrics(arg_temp, filename=r_file)
 
 	# restore local variables
 	load("get_reprod.RData")

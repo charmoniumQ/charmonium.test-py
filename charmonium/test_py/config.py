@@ -4,9 +4,10 @@ import pathlib
 import functools
 from typing import Any
 
-import azure.identity.aio  # type: ignore
+import azure.identity.aio
 import charmonium.cache
 import charmonium.freeze
+import distributed
 import docker  # type: ignore
 import github
 import upath
@@ -82,7 +83,7 @@ for config in [charmonium.cache.freeze_config, charmonium.freeze.global_config]:
 # __init__ implicitly calls azure.identity.aio.ManagedIdentityCredential.__init__
 # __setstate__ also calls azure.identity.aio.ManagedIdentityCredential.__init__
 # __getstate__ is dummy that returns something Truthy.
-class AzureCredential(azure.identity.aio.DefaultAzureCredential):  # type: ignore
+class AzureCredential(azure.identity.aio.DefaultAzureCredential):
     def __getstate__(self) -> str:
         return "hi" # must be Truthy
     def __setstate__(self, state: Any) -> None:
@@ -105,8 +106,8 @@ def index_path() -> pathlib.Path:
     )
 
 
-def harvard_dataverse_token() -> str | None:
-    return os.environ.get("HARVARD_DATAVERSE_TOKEN", None)
+def harvard_dataverse_token() -> str:
+    return os.environ.get("HARVARD_DATAVERSE_TOKEN", "")
 
 
 @functools.cache
@@ -117,3 +118,10 @@ def docker_client() -> docker.DockerClient:
 @functools.cache
 def github_client() -> github.Github:
     return github.Github(os.environ.get("GITHUB_ACCESS_TOKEN", None))
+
+
+@functools.cache
+def dask_client() -> distributed.Client:
+    return distributed.Client(  # type: ignore
+            address="127.0.0.1:8786",
+    )

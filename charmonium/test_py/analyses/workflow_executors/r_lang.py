@@ -14,7 +14,7 @@ class RLangExecutor(WorkflowExecutor):
             condition: Condition,
     ) -> tuple[str, tuple[str, ...]]:
         return (
-            "r-runner",
+            "wfregtest.azurecr.io/r-runner:b756a7550581125bed1cd3771de53e0120fdb375",
             ("Rscript", "/exec_r_files.R", str(code_dir)),
         )
 

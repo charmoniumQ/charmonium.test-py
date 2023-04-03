@@ -19,7 +19,7 @@ RUN micromamba install \
   time \
   python
 
-COPY exec_r_files.R /exec_r_files.R
-COPY execute_files.py /execute_files.py
-COPY readability_analysis.py /readability_analysis.py
+COPY dockerfiles/r-runner/exec_r_files.R /exec_r_files.R
+COPY dockerfiles/r-runner/execute_files.py /execute_files.py
+COPY dockerfiles/r-runner/readability_analysis.py /readability_analysis.py
 ENTRYPOINT /bin/bash

@@ -197,7 +197,10 @@ def measure_docker_execution(
         try:
             container.wait()
         finally:
-            container.remove()
+            try:
+                container.stop()
+            finally:
+                container.remove(force=True)
         time_output = (
             resource_file.read_text().strip().split("\n")
             if resource_file.exists()
