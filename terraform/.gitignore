@@ -2,6 +2,5 @@ terraform.tfstate
 terraform.tfstate.*
 .terraform/
 .terraform.lock.hcl
-manager_key
+developer_private_key
 ssh_config
-key

@@ -1,4 +1,3 @@
-# See https://github.com/atrisovic/dataverse-r-study/blob/master/docker/readability_analysis.py
 from __future__ import division
 import collections
 import json
@@ -134,12 +133,12 @@ def get_readability_metrics(vars, filename=None, all_code=None, test=False):
                 'max_vars_count': max_vars_count,
                 'max_occurence_of_var': max_occurence_of_var,
                 'vars': ";".join(vars)
-    }
+				}
 
     if test:
         return metrics_dict
     else:
-        with open('metrics.txt', 'a') as f:
+        with open('/results/metrics.txt', 'a') as f:
             json.dump(metrics_dict, f)
-            f.write('\n')
+            f.write(',')
     

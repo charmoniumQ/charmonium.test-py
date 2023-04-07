@@ -50,6 +50,8 @@ class DataverseDataset(Code):
 
             fetches = list[Awaitable[None]]()
             for file in response_obj['data']['files']:
+                if file["restricted"]:
+                    continue
                 fileid = file['dataFile']['id']
                 filename = file['label']    # for ingested tabular files, restore the original file name extension:
                 if 'originalFileFormat' in file['dataFile'].keys():
@@ -70,15 +72,15 @@ class DataverseDataset(Code):
                 fetches.append(self.fetch(session, dlurl, path / filename, file["dataFile"]["md5"], file["dataFile"]["filesize"]))
             await asyncio.gather(*fetches)
 
-    @staticmethod
-    async def fetch(session: aiohttp.ClientSession, dlurl: str, dest: pathlib.Path, expected_hash: str, size: int) -> None:
+    async def fetch(self, session: aiohttp.ClientSession, dlurl: str, dest: pathlib.Path, expected_hash: str, size: int) -> None:
         speed_kbps = 100
         safety_factor = 10
         min_timeout = 30
         time_estimate = int(size * 8 / (speed_kbps * 1000))
         timeout = max(time_estimate * safety_factor, min_timeout)
         if time_estimate > 30:
-            warnings.warn(f"Might take a while: {dlurl} {size=} {time_estimate=} {timeout=}")
+            pass
+            # warnings.warn(f"Might take a while: {dlurl} {size=} {time_estimate=} {timeout=}")
         try:
             async with session.get(
                     dlurl,
@@ -87,10 +89,10 @@ class DataverseDataset(Code):
             ) as response:
                 result = await response.read()
         except Exception as exc:
-            raise RuntimeError(f"Couldn't get: {dlurl} {timeout=} {size=}") from exc
+            warnings.warn(f"Couldn't get: {dlurl} {timeout=} {size=} {exc=}")
         downloaded_hash = hashlib.md5(result).hexdigest()
         if downloaded_hash == expected_hash:
             dest.parent.mkdir(exist_ok=True, parents=True)
             dest.write_bytes(result)
         else:
-            raise RuntimeError(f"Hash mismatch getting: {dlurl}\n{downloaded_hash=}\n{expected_hash=}")
+            warnings.warn(f"Hash mismatch getting: {dlurl}\n{downloaded_hash=}\n{expected_hash=}\nof {self.persistent_id}")

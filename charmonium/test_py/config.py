@@ -91,19 +91,21 @@ class AzureCredential(azure.identity.aio.DefaultAzureCredential):
 
 
 def data_path() -> pathlib.Path:
-    return upath.UPath(
-        "abfs://data4/",
-        account_name="wfregtest",
-        credential=AzureCredential(),
-    )
+    return pathlib.Path() / ".cache2"
+    # return upath.UPath(
+    #     "abfs://data4/",
+    #     account_name="wfregtest",
+    #     credential=AzureCredential(),
+    # )
 
 
 def index_path() -> pathlib.Path:
-    return upath.UPath(
-        "abfs://index4/",
-        account_name="wfregtest",
-        credential=AzureCredential(),
-    )
+    return pathlib.Path() / ".cache"
+    # return upath.UPath(
+    #     "abfs://index4/",
+    #     account_name="wfregtest",
+    #     credential=AzureCredential(),
+    # )
 
 
 def harvard_dataverse_token() -> str:

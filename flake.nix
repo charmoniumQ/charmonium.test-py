@@ -8,6 +8,11 @@
     };
     poetry2nix = {
       url = "github:nix-community/poetry2nix";
+      inputs = {
+        nixpkgs = {
+          follows = "nixpkgs";
+        };
+      };
     };
   };
 
@@ -15,13 +20,66 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        p2n = poetry2nix.legacyPackages.${system};
         pyproject = builtins.fromTOML(builtins.readFile(./pyproject.toml));
         name = builtins.replaceStrings ["." "_"] ["-" "-"] pyproject.tool.poetry.name;
         default-python = pkgs.python311;
         nix-dev-dependencies = [
           pkgs.poetry
+          pkgs.terraform
+          pkgs.azure-cli
+          pkgs.jq
+        ];
+        nix-site-dependencies = [
           pkgs.hwloc
         ];
+        # See https://github.com/nix-community/poetry2nix/blob/master/overrides/build-systems.json
+        # and https://github.com/nix-community/poetry2nix/blob/master/docs/edgecases.md
+        pypkgs-build-requirements = {
+          charmonium-test-py = [ "poetry" ];
+          charmonium-time-block = [ "poetry" ];
+          charmonium-freeze = [ "poetry" ];
+          charmonium-cache = [ "poetry" ];
+          azure-cli-telemetry = [ "setuptools" ];
+          types-tqdm = [ "setuptools" ];
+          pyproject-api = [ "hatchling" "hatch-vcs"];
+          tox = [ "hatchling" "hatch-vcs" ];
+          universal-pathlib = [ "flit-core" ];
+          pygithub = [ "setuptools-scm" ];
+        };
+        p2n-overrides' = p2n.defaultPoetryOverrides.extend (self: super:
+          builtins.mapAttrs (package: build-requirements:
+            (builtins.getAttr package super).overridePythonAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ (builtins.map (pkg: if builtins.isString pkg then builtins.getAttr pkg super else pkg) build-requirements);
+            })
+          ) pypkgs-build-requirements
+        );
+        p2n-overrides = p2n-overrides'.extend (self: super: {
+          pillow = super.pillow.overridePythonAttrs (
+            old:
+            let
+              oldPreConfigure = old.preConfigure or "";
+              oldPreConfigure' = if builtins.isList oldPreConfigure then builtins.concatStringsSep "\n" oldPreConfigure else oldPreConfigure;
+              addLibrary = lib: ''
+                export C_INCLUDE_PATH="${if builtins.hasAttr "dev" lib then lib.dev else lib.out}/include:$C_INCLUDE_PATH"
+                export LIBRARY_PATH="${lib.out}/lib:$LIBRARY_PATH"
+              '';
+              librariesToAdd = [ pkgs.freetype pkgs.libjpeg pkgs.openjpeg pkgs.libimagequant pkgs.zlib pkgs.lcms2 pkgs.libtiff pkgs.tcl ];
+            in
+              {
+                nativeBuildInputs = (old.nativeBuildInputs or [ ])
+                                    ++ [ pkgs.pkg-config self.pytest-runner ];
+                buildInputs = with pkgs; (old.buildInputs or [ ])
+                                         ++ [ pkgs.libxcrypt pkgs.libwebp ]
+                                         ++ librariesToAdd
+                                         ++ pkgs.lib.optionals (lib.versionAtLeast old.version "7.1.0") [ pkgs.xorg.libxcb ]
+                                         ++ pkgs.lib.optionals (self.isPyPy) [ pkgs.tk pkgs.xorg.libX11 ];
+                preConfigure = oldPreConfigure'
+                               + builtins.concatStringsSep "\n" (map addLibrary librariesToAdd)
+                               + "\nsed 's|DEBUG = False|DEBUG = True|g' -i setup.py\n";
+              }
+          );
+        });
       in {
         packages = {
           # There are two approaches to make a poetry project work in Nix:
@@ -33,56 +91,6 @@
           # Cryptography is a core dependency, so it won't work at all.
           # ${name-pure-shell} is option 1, ${name-shell} is option 2.
 
-          "${name}-app" = pkgs.poetry2nix.mkPoetryApplication {
-            projectDir = ./.;
-            # default Python for shell
-            python = default-python;
-            groups = ["dev"];
-            overrides = pkgs.poetry2nix.overrides.withDefaults (self: super: {
-              charmonium-test-py = super.charmonium-freeze.overrideAttrs (old: {
-                nativeBuildInputs = (old.nativeBuildInputs or []) ++ [self.poetry];
-              });
-              charmonium-time-block = super.charmonium-freeze.overrideAttrs (old: {
-                nativeBuildInputs = (old.nativeBuildInputs or []) ++ [self.poetry];
-              });
-              charmonium-cache = super.charmonium-freeze.overrideAttrs (old: {
-                nativeBuildInputs = (old.nativeBuildInputs or []) ++ [self.poetry];
-              });
-              charmonium-freeze = super.charmonium-freeze.overrideAttrs (old: {
-                nativeBuildInputs = (old.nativeBuildInputs or []) ++ [self.poetry];
-              });
-              azure-cli-telemetry = super.azure-cli-telemetry.overrideAttrs (old: {
-                nativeBuildInputs = (old.nativeBuildInputs or []) ++ [self.setuptools];
-              });
-              types-tqdm = super.types-tqdm.overrideAttrs (old: {
-                nativeBuildInputs = (old.nativeBuildInputs or []) ++ [self.setuptools];
-              });
-              pyproject-api = super.pyproject-api.overrideAttrs (old: {
-                nativeBuildInputs = (old.nativeBuildInputs or []) ++ [self.hatchling self.hatch-vcs];
-              });
-              tox = super.tox.overrideAttrs (old: {
-                nativeBuildInputs = (old.nativeBuildInputs or []) ++ [self.hatchling];
-              });
-              universal-pathlib = super.universal-pathlib.overrideAttrs (old: {
-                nativeBuildInputs = (old.nativeBuildInputs or []) ++ [self.flit-core];
-              });
-              # pygithub = super.pygithub.overrideAttrs (old: {
-              #   nativeBuildInputs = (old.nativeBuildInputs or []) ++ [self.setuptools-scm-3132412841];
-              # });
-            });
-          };
-  
-          "${name}-pure-shell" = pkgs.mkShell {
-            buildInputs = nix-dev-dependencies ++ [
-              (pkgs.poetry2nix.mkPoetryEnv {
-                projectDir = ./.;
-                # default Python for shell
-                python = default-python;
-              })
-            ];
-            # TODO: write a check expression (`nix flake check`)
-          };
-  
           "${name}-shell" = pkgs.mkShell {
             buildInputs = nix-dev-dependencies ++ [default-python];
             shellHook = ''
@@ -101,9 +109,46 @@
             '';
             # TODO: write a check expression (`nix flake check`)
           };
+          "${name}-image" = pkgs.dockerTools.buildLayeredImage {
+            name = "${name}";
+            contents = [
+              # pkgs.dash
+              pkgs.busybox
+              (p2n.mkPoetryEnv {
+                projectDir = ./.;
+                python = default-python;
+                groups = [ "site" ];
+                overrides = p2n-overrides;
+              })
+            ] ++ nix-site-dependencies;
+          };
+
+          "jupyterlab-image" = pkgs.dockerTools.buildLayeredImage {
+            name = "jupyterlab-image";
+            contents = [
+              (p2n.mkPoetryEnv {
+                projectDir = ./dockerfiles/jupyterlab_container;
+                python = default-python;
+                overrides = p2n-overrides;
+              })
+            ];
+          };
         };
 
-        devShell = self.packages.${system}."${name}-shell";
+        devShells = rec {
+          impure-shell = self.packages.${system}."${name}-shell";
+          default = pure-shell;
+          pure-shell = pkgs.mkShell {
+            packages = [
+              (p2n.mkPoetryEnv {
+                projectDir = ./.;
+                python = default-python;
+                groups = [ "site" "dev" ];
+                overrides = p2n-overrides;
+              })
+            ] ++ nix-dev-dependencies ++ nix-site-dependencies;
+          };
+        };
 
         # defaultPackage = self.packages.${system}.${name};
       });

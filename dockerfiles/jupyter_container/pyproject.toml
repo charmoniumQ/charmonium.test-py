@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "jupyter-container"
+version = "0.1.0"
+description = ""
+authors = ["Samuel Grayson <sam@samgrayson.me>"]
+readme = "README.md"
+packages = [{include = "jupyter_container"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+jupyterlab = "^3.6.3"
+dask-labextension = "^6.1.0"
+dask = {extras = ["distributed"], version = "^2023.3.2"}
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

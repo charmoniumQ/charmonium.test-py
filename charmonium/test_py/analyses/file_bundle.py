@@ -79,7 +79,7 @@ class FileBundle:
         # TODO: make this be a true remote archive.
         remote_archive = pathlib.Path(".cache2") / random_str(10)
         contents: dict[pathlib.Path, File] = {}
-        for path in walk_files(data_path):
+        for path in walk_files(data_path, full_path=False):
             if (data_path / path).is_file() and not (data_path / path).is_symlink():
                 contents[path] = File.from_path(data_path / path)
         if compress:

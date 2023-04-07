@@ -39,7 +39,7 @@ class ExecuteWorkflow(Analysis):
                 command,
                 mem_limit=mem_limit,
                 cpus=cpus,
-                readwrite_mounts=(code_path, log_dir, out_dir),
+                readwrite_binds=(code_path, log_dir, out_dir),
                 wall_time_limit=wall_time_limit,
             )
             (log_dir / "stdout.txt").write_bytes(proc.stdout_b)

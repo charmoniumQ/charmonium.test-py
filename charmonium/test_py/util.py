@@ -8,7 +8,7 @@ import string
 import shutil
 import subprocess
 import xml.etree.ElementTree
-from typing import Generator, Iterable, TypeVar, Any, Mapping
+from typing import Generator, Iterable, TypeVar, Any, Mapping, TYPE_CHECKING
 
 
 def random_str(
@@ -116,3 +116,13 @@ def xml_to_tuple(elem: xml.etree.ElementTree.Element) -> tuple[str, Mapping[str,
         (text + tail if text + tail else None),
         (children if children else ()),
     )
+
+
+if TYPE_CHECKING:
+    def ignore_arg(obj: _T) -> _T:
+        return obj
+else:
+    import wrapt
+    class ignore_arg(wrapt.ObjectProxy):
+        def __getfrozenstate__(self) -> None:
+            return None

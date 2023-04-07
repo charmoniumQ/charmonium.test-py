@@ -146,8 +146,10 @@ def measure_docker_execution(
         mem_limit: int,
         cpus: float,
         privileged: bool = False,
-        readonly_mounts: tuple[pathlib.Path, ...] = (),
-        readwrite_mounts: tuple[pathlib.Path, ...] = (),
+        readonly_mounts: Iterable[tuple[pathlib.Path, pathlib.Path]] = (),
+        readwrite_mounts: Iterable[tuple[pathlib.Path, pathlib.Path]] = (),
+        readonly_binds: Iterable[pathlib.Path] = (),
+        readwrite_binds: Iterable[pathlib.Path] = (),
         kill_after: datetime.timedelta = datetime.timedelta(seconds=120),
 ) -> CompletedContainer:
     with create_temp_dir() as temp_dir:
@@ -175,11 +177,19 @@ def measure_docker_execution(
             str(temp_dir): {"bind": str(temp_dir), "mode": "rw"},
             **{
                 str(mount): {"bind": str(mount), "mode": "ro"}
-                for mount in readonly_mounts
+                for mount in readonly_binds
             },
             **{
-                str(mount): {"bind": str(mount), "mode": "rw"}
-                for mount in readwrite_mounts
+                str(host_dir): {"bind": str(container_dir), "mode": "ro"}
+                for host_dir, container_dir in readonly_mounts
+            },
+            **{
+                str(mount): {"bind": str(mount), "mode": "ro"}
+                for mount in readonly_binds
+            },
+            **{
+                str(host_dir): {"bind": str(container_dir), "mode": "rw"}
+                for host_dir, container_dir in readwrite_mounts
             },
         }
         container = docker_client().containers.run(

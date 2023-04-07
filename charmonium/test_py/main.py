@@ -1,6 +1,7 @@
 import dataclasses
 import pathlib
 import shutil
+import sys
 from typing import Iterable, TypeVar, Any, Callable, Mapping, ParamSpec, cast, TYPE_CHECKING
 
 import tqdm
@@ -53,13 +54,22 @@ class Config:
     registries: tuple[Registry, ...]
     conditions: tuple[Condition, ...]
     analyses: tuple[Analysis, ...]
+    # TODO: add aggregator, aggregates results (per-workflow analysis and inter-workflow analysis)
+
+
+@memoize(group=group)
+def get_codes(registry: Registry) -> list[Code]:
+    return list(registry.get_codes())
+
+
+@memoize(group=group)
+def analyze(analysis: Analysis, code: Code, condition: Condition) -> Result:
+    with create_temp_dir() as temp_path:
+        code.checkout(temp_path)
+        return analysis.analyze(code, condition, temp_path)
 
 
 def main(config: Config) -> list[Result]:
-    # TODO: add aggregator, aggregates results (per-workflow analysis and inter-workflow analysis)
-    @memoize(group=group)
-    def get_codes(registry: Registry) -> list[Code]:
-        return list(registry.get_codes())
 
     codes = list(flatten1(
         get_codes(registry)
@@ -68,38 +78,16 @@ def main(config: Config) -> list[Result]:
 
     get_codes.log_usage_report()
 
-    @memoize(group=group)
-    def analyze(analysis: Analysis, code: Code, condition: Condition) -> Result:
-        with create_temp_dir() as temp_path:
-            code.checkout(temp_path)
-            return analysis.analyze(code, condition, temp_path)
-
     from .codes import DataverseDataset, WorkflowCode
     results: list[Result] = []
-    for code in tqdm.tqdm(codes[:40]):
+    for code in tqdm.tqdm(codes[:1]):
         for analysis in config.analyses:
-            # TODO: remove this size limitation
-            if isinstance(code, WorkflowCode):
-                underlying_code = code.code
-                if isinstance(underlying_code, DataverseDataset) and underlying_code.size_est() < 8 * 1024**2:
-                    for condition in config.conditions:
-                        results.append(analyze(analysis, code, condition))
+            for condition in config.conditions:
+                results.append(analyze(analysis, code, condition))
+
 
     # results = compute(results)[0]
 
     analyze.log_usage_report()
 
-    import IPython; IPython.embed()
-
     return results
-
-
-if __name__ == "__main__":
-    from .registries import TrisovicDataverseFixed
-    from .analyses import ExecuteWorkflow
-
-    main(Config(
-        registries=(TrisovicDataverseFixed(),),
-        conditions=(Condition(),),
-        analyses=(ExecuteWorkflow(),),
-    ))

@@ -1,5 +1,3 @@
-# See https://github.com/atrisovic/dataverse-r-study/blob/master/docker/execute_files.py
-
 def execute_files(f):
     from subprocess import PIPE, CalledProcessError, check_call, Popen, TimeoutExpired
 
