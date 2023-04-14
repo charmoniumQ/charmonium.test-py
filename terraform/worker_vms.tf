@@ -46,10 +46,10 @@ resource "azurerm_linux_virtual_machine" "worker" {
     type              = "ssh"
     user              = var.username
     host              = azurerm_linux_virtual_machine.worker[count.index].private_ip_address
-    private_key       = tls_private_key.manager.private_key_openssh
+    private_key       = tls_private_key.developer.private_key_openssh
     bastion_user      = var.username
-	bastion_host      = azurerm_linux_virtual_machine.manager.public_ip_address
-    bastion_host_key  = tls_private_key.manager.private_key_openssh
+  	bastion_host      = azurerm_linux_virtual_machine.manager.public_ip_address
+    bastion_host_key  = tls_private_key.developer.private_key_openssh
   }
   provisioner "remote-exec" {
     inline = [
@@ -57,8 +57,8 @@ resource "azurerm_linux_virtual_machine" "worker" {
       "sudo usermod -aG docker $USER",
       "pip install --user azure-cli",
       "~/.local/bin/az login --identity",
-	  "~/.local/bin/az acr login --name ${azurerm_container_registry.default.name}",
-	  "touch ~/.hushlogin",
+      "~/.local/bin/az acr login --name ${azurerm_container_registry.default.name}",
+      "touch ~/.hushlogin",
     ]
   }
 }

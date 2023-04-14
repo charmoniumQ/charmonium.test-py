@@ -5,15 +5,9 @@ set -e -o nounset
 
 cd $(dirname $(dirname $0))
 
-echo "## Log in to Azure"
-
-# if ! az ad signed-in-user show | jq --exit-status '.mail'; then
-# 	az login
-# fi
-
 echo "## Deploy cloud infrastructure"
 
-# terraform -chdir=terraform apply -auto-approve
+terraform -chdir=terraform apply -auto-approve
 
 echo "## Launch Dask manager"
 
@@ -24,10 +18,11 @@ if [ ! -f dockerfiles/main_image ]; then
 		exit 1
 	fi
 fi
-main_image=$(cat dockerfiles/main_image)
+main_image=$(cat dockerfiles/charmonium_test_py_image)
 manager_private_ip="$(terraform -chdir=terraform output --raw manager_private_ip)"
 scheduler_port=8129
 dashboard_port=8787
+notebook_port=8421
 
 ssh \
 	-T \
@@ -95,7 +90,9 @@ echo "## Done"
 echo "Run this command to connect to the dashboard:"
 echo ssh \
 	-F terraform/ssh_config \
-	-L "${dashboard_port}":localhost:"${dashboard_port}" \
+	-L "${dashboard_port}:localhost:${dashboard_port}" \
+	-L "${notebook_port}:localhost:${notebook_port}" \
 	manager
 echo docker run --rm "${main_image}" python -m charmonium.test_py.trisovic_main
+echo docker run --publish "${notebook_port}:${notebook_port}" --rm "${main_image}" jupyter-lab
 echo open http://localhost:${dashboard_port}

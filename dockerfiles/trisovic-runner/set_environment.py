@@ -263,7 +263,7 @@ def main():
         
         
         if not_authorized is False:
-            with open('/results/run_log_st1.csv','a') as f:
+            with open('run_log_st1.csv','a') as f:
                 # file_name, total lines, number of comments, number of dependencies
                 f.write("{},{},{},{},{},{},{},{},{}\n".format(r_file, \
                     lines_no, comments_no, libraries_no, func_no, test_no, class_no, encoding, confidence))
@@ -276,7 +276,7 @@ def main():
     list_of_libs = set(list_of_libs)
 
     if not_authorized is False:
-        with open('/results/run_log_st.csv','a') as f:
+        with open('run_log_st.csv','a') as f:
             # number of comments, number of dependencies, size, list of files
             size = get_size_of_replication_package()
             f.write("{},{},{},{},{}\n".format(total_comments, total_libraries, size, ";".join(get_list_of_all()), ";".join(list_of_libs)))

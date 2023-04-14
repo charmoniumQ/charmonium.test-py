@@ -5,11 +5,15 @@ dir_path_doi = local_args[1]
 setwd("/usr/workdir")
 library(stringr)
 
-install.packages("R.utils")
-library(R.utils)
+if (!require R.utils) {
+    install.packages("R.utils")
+    library(R.utils)
+}
 
-install.packages("reticulate")
-library(reticulate)
+if (!require reticulate) {
+    install.packages("reticulate")
+    library(reticulate)
+}
 
 r_files = list.files(".", pattern="\\.[Rr]\\>", recursive=FALSE, full.names=FALSE)
 r_files <- r_files[r_files != "exec_r_files.R"]
@@ -34,13 +38,13 @@ for (r_file in r_files) {
 	external_vars <- ls()
 	external_vars <- external_vars[!external_vars %in% local_vars]
 
+	# restore local variables
+	load("get_reprod.RData")
+
 	use_python("/usr/bin/python2.7")
 	source_python('readability_analysis.py')
 	arg_temp <- paste(external_vars, collapse=' ')
 	get_readability_metrics(arg_temp, filename=r_file) 
-
-	# restore local variables
-	load("get_reprod.RData")
 
 	# if there was an error
 
@@ -85,7 +89,7 @@ for (r_file in r_files) {
 	new_log_data = data.frame(doi=c(dir_path_doi), filename=c(r_file),
 							  error=c(error), stringsAsFactors = FALSE)
 	# write the new log data into the log file
-	write.table(new_log_data, file="/results/run_log.csv", sep=",", append=TRUE,
+	write.table(new_log_data, file="run_log.csv", sep=",", append=TRUE,
 				row.names=FALSE, col.names=FALSE)
 
 	}

@@ -33,6 +33,14 @@
         nix-site-dependencies = [
           pkgs.hwloc
         ];
+        # see https://lazamar.co.uk/nix-versions/
+        oldNixpkgs = nixpkgsGitHash:
+          import (builtins.fetchGit {
+            name = "old-nixpkgs";
+            url = "https://github.com/NixOS/nixpkgs/";
+            ref = "refs/heads/nixpkgs-unstable";
+            rev = nixpkgsGitHash;
+          }) {};
         # See https://github.com/nix-community/poetry2nix/blob/master/overrides/build-systems.json
         # and https://github.com/nix-community/poetry2nix/blob/master/docs/edgecases.md
         pypkgs-build-requirements = {
@@ -46,6 +54,16 @@
           tox = [ "hatchling" "hatch-vcs" ];
           universal-pathlib = [ "flit-core" ];
           pygithub = [ "setuptools-scm" ];
+          beautifulsoup4 = [ "hatchling" ];
+          xyzservices = [ "setuptools" ];
+          simpervisor = [ "setuptools" ];
+          pandas = [ "versioneer" ];
+          jupyter-server-proxy = [ "setuptools" "jupyter-packaging" ];
+          dask-labextension = [ "jupyter-packaging" ];
+          urllib3-secure-extra = [ "flit-core" ];
+          azure-mgmt-appcontainers = [ "setuptools" ];
+          azure-cli-core = [ "setuptools" ];
+          azure-cli = [ "setuptools" ];
         };
         p2n-overrides' = p2n.defaultPoetryOverrides.extend (self: super:
           builtins.mapAttrs (package: build-requirements:
@@ -54,7 +72,33 @@
             })
           ) pypkgs-build-requirements
         );
-        p2n-overrides = p2n-overrides'.extend (self: super: {
+        p2n-overrides = p2n-overrides'.extend (self: super:
+          let
+            # https://github.com/Azure/azure-cli/issues/14416
+            # https://github.com/NixOS/nixpkgs/blob/nixos-22.11/pkgs/tools/admin/azure-cli/python-packages.nix
+            # Also note, azure is a "namespace package", no __init__ required.
+            # If it is present, it will "conflict" with other azure packages that want to create their own __init__.py
+            fix-old-azure-packages = ''
+              echo "--- Patching setup.py ---"
+              sed --in-place 's/except ImportError:/except ImportError as exc:\n    raise exc/g' setup.py
+              head --lines 20 setup.py
+              echo "------------------------"
+
+              echo "--- Patching azure_bdist_wheel.py --"
+              sed --in-place \
+                  -e 's/from wheel.pep425tags.*/from wheel.bdist_wheel import get_abi_tag, get_platform/g' \
+                  -e 's/from wheel.util.*//g' \
+                  -e 's/from wheel.archive.*//g' \
+                  -e 's/get_abbr_impl()/"cp"/g' \
+                  -e 's/get_impl_ver()/"311"/g' \
+                  -e 's/native(\(.*\))/(\1).decode()/g' \
+                  -e 's/open_for_csv(\(.*\))/open(\1, {"newline": ""})/g' \
+                  azure_bdist_wheel.py
+              head --lines 70 azure_bdist_wheel.py | tail --lines 15
+              echo "------------------------"
+            '';
+          in
+          {
           pillow = super.pillow.overridePythonAttrs (
             old:
             let
@@ -79,6 +123,24 @@
                                + "\nsed 's|DEBUG = False|DEBUG = True|g' -i setup.py\n";
               }
           );
+          # azure-mgmt-consumption = super.azure-mgmt-consumption.overridePythonAttrs (
+          #   old:
+          #   {
+          #     preBuild = (old.preBuild or "") + fix-old-azure-packages;
+          #   }
+          # );
+          # azure-mgmt-datalake-analytics = super.azure-mgmt-datalake-analytics.overridePythonAttrs (
+          #   old:
+          #   {
+          #     preBuild = (old.preBuild or "") + fix-old-azure-packages;
+          #   }
+          # );
+          # azure-mgmt-relay = super.azure-mgmt-relay.overridePythonAttrs (
+          #   old:
+          #   {
+          #     preBuild = (old.preBuild or "") + fix-old-azure-packages;
+          #   }
+          # );
         });
       in {
         packages = {
@@ -123,16 +185,25 @@
             ] ++ nix-site-dependencies;
           };
 
-          "jupyterlab-image" = pkgs.dockerTools.buildLayeredImage {
-            name = "jupyterlab-image";
+          "jupyter-image" = pkgs.dockerTools.buildLayeredImage {
+            name = "jupyter-image";
             contents = [
               (p2n.mkPoetryEnv {
-                projectDir = ./dockerfiles/jupyterlab_container;
+                projectDir = ./dockerfiles/jupyter;
                 python = default-python;
                 overrides = p2n-overrides;
               })
             ];
           };
+
+          "r-runner" = pkgs.dockerTools.buildLayeredImage {
+            name = "r-runner";
+            tag = "3.2.4";
+            contents = [
+              ((oldNixpkgs ((import ./dockerfiles/r-versions.nix)."3.0.3")).R)
+            ];
+          };
+
         };
 
         devShells = rec {
@@ -147,6 +218,13 @@
                 overrides = p2n-overrides;
               })
             ] ++ nix-dev-dependencies ++ nix-site-dependencies;
+            shellHook = ''
+              export AZURE_CLI_PYTHONPATH=$PYTHONPATH
+              export PYTHONPATH=
+              # azure-cli adds all of its azure-* packages to the PYTHONPATH
+              # which conflict with the packages in the Poetry env.
+              # The `az` wrapper script sets its own PYTHONPATH, so we don't need that
+            '';
           };
         };
 

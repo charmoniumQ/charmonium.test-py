@@ -2,7 +2,7 @@ import dataclasses
 import pathlib
 import shutil
 import sys
-from typing import Iterable, TypeVar, Any, Callable, Mapping, ParamSpec, cast, TYPE_CHECKING
+from typing import Iterable, TypeVar, Any, Callable, Mapping, cast, TYPE_CHECKING
 
 import tqdm
 from charmonium.cache import memoize, Memoized, MemoizedGroup, DirObjStore
@@ -12,10 +12,6 @@ from .types import Code, Result, Condition, Registry, Analysis
 from . import config
 
 
-Return = TypeVar("Return")
-Params = ParamSpec("Params")
-
-
 if TYPE_CHECKING:
     def delayed(func: Callable[Params, Return]) -> Callable[Params, Return]:
         return func
@@ -23,12 +19,17 @@ if TYPE_CHECKING:
         return elem
     def ignore_arg(obj: Return) -> Return:
         return obj
+    from typing_extensions import ParamSpec
+    Return = TypeVar("Return")
+    Params = ParamSpec("Params")
 else:
     from dask import delayed, compute
     import wrapt
     class ignore_arg(wrapt.ObjectProxy):
         def __getfrozenstate__(self):
             return None
+    Return = None
+    Params = None
 
 
 group = MemoizedGroup(

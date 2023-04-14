@@ -17,10 +17,12 @@ class File:
     file_type: str
     mime_type: str
     url: pathlib.Path | None
+    contents: bytes | None
 
     @staticmethod
     def from_path(path: pathlib.Path, url: pathlib.Path | None = None) -> File:
-        if not path.is_file() or path.is_symlink():
+        path = path.resolve()
+        if not path.is_file():
             raise ValueError(f"{path} is not a regular file")
         return File(
             hash_algo="xxhash",
@@ -30,6 +32,7 @@ class File:
             file_type=file_type(path),
             mime_type=mime_type(path),
             url=path if url is None else url,
+            contents=path.read_bytes(),
         )
 
     @staticmethod
@@ -40,8 +43,9 @@ class File:
             hash_val=hash_path(pathlib.Path("/dev/null", size=64)),
             size=0,
             file_type="empty",
-            mime_type="empty",
+            mime_type="inode/x-empty",
             url=None,
+            contents=b"",
         )
 
     def __eq__(self, other: object) -> bool:
@@ -58,6 +62,8 @@ class File:
             yield UserWarning("hash is bigger than hash_bits", self, self.hash_val, self.hash_bits)
         if self.size < 0:
             yield UserWarning("File cannot have negative size")
+        if self.contents is not None:
+            assert len(self.contents) == self.size
 
     @property
     def empty(self) -> bool:
@@ -65,24 +71,28 @@ class File:
 
     def read_bytes(self) -> bytes | None:
         """Return the bytes of this file, if we have them, else None."""
-        # I guess we never have them :/
-        return None
+        if self.contents is not None:
+            return self.contents
+        else:
+            raise RuntimeError("We didn't store the bytes of this file.")
 
 
 @dataclasses.dataclass(frozen=True)
 class FileBundle:
-    archive: File
+    archive: File | None
     files: Mapping[pathlib.Path, File]
 
     @staticmethod
-    def from_path(data_path: pathlib.Path, compress: bool = False) -> FileBundle:
+    def from_path(data_path: pathlib.Path, compress: bool = False, move: bool = False) -> FileBundle:
         # TODO: make this be a true remote archive.
-        remote_archive = pathlib.Path(".cache2") / random_str(10)
         contents: dict[pathlib.Path, File] = {}
         for path in walk_files(data_path, full_path=False):
             if (data_path / path).is_file() and not (data_path / path).is_symlink():
                 contents[path] = File.from_path(data_path / path)
         if compress:
+            assert move
+            # This branch puts all of the files from data_path into an archive in a remote destination
+            remote_archive = pathlib.Path(".cache2") / (random_str(10) + ".tar.xz")
             with create_temp_dir() as temp_dir:
                 local_archive = temp_dir / remote_archive.name
                 (temp_dir / "files").write_text(
@@ -102,7 +112,9 @@ class FileBundle:
                 with local_archive.open("rb") as src_fileobj, remote_archive.open("wb") as dst_fileobj:
                     shutil.copyfileobj(src_fileobj, dst_fileobj)
                 return FileBundle(File.from_path(local_archive, remote_archive), contents)
-        else:
+        elif move:
+            # This branch puts all of the files from in a remote destination
+            remote_archive = pathlib.Path(".cache2") / random_str(10)
             remote_archive.mkdir(parents=True)
             for path in contents.keys():
                 (remote_archive / path).parent.mkdir(parents=True, exist_ok=True)
@@ -110,13 +122,17 @@ class FileBundle:
             index_file = remote_archive / "index"
             index_file.write_text("\n".join(map(str, contents.keys())))
             return FileBundle(File.from_path(index_file), contents)
+        else:
+            # This branch puts all of the files into this object in RAM
+            return FileBundle(None, contents)
 
     @staticmethod
     def blank() -> FileBundle:
-        return FileBundle(File.blank(), {})
+        return FileBundle(None, {})
 
     def check_invariants(self) -> Iterable[UserWarning]:
-        yield from []
+        for file in self.files.values():
+            yield from file.check_invariants()
 
     @property
     def empty(self) -> bool:

@@ -1,3 +1,8 @@
+variable "rg_name" {
+  type    = string
+  default = "terraform"
+}
+
 variable "manager_disk_size_gb" {
   type    = string
   default = "40"
@@ -12,12 +17,7 @@ variable "manager_vm_size" {
 
 variable "workers" {
   type    = number
-  default = 0
-}
-
-variable "enable_manager" {
-  type    = number
-  default = 0
+  default = 1
 }
 
 variable "worker_disk_size_gb" {

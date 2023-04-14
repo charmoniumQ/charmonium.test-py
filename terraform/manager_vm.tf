@@ -25,7 +25,6 @@ resource "azurerm_network_interface_security_group_association" "manager" {
 
 resource "azurerm_linux_virtual_machine" "manager" {
   name                  = "manager"
-  count                 = var.enable_manager
   location              = azurerm_resource_group.default.location
   resource_group_name   = azurerm_resource_group.default.name
   size                  = var.manager_vm_size
@@ -52,9 +51,9 @@ resource "azurerm_linux_virtual_machine" "manager" {
   }
   connection {
     type        = "ssh"
-      user        = var.username
-      host        = azurerm_linux_virtual_machine.manager.public_ip_address
-      private_key = tls_private_key.developer.private_key_openssh
+    user        = var.username
+    host        = azurerm_linux_virtual_machine.manager.public_ip_address
+    private_key = tls_private_key.developer.private_key_openssh
   }
   provisioner "file" {
       content = tls_private_key.manager.private_key_openssh

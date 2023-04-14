@@ -209,6 +209,7 @@ https://github.com/atrisovic/dataverse-r-study/blob/master/docker/exec_r_files.R
 
 # Code improvements
 
+- Original code mixes Python2.7 and Python3.5 inside the container. Both of these are old, and there is no reason to use two different versions in the same container. In particular, `reticulate` will drop support for Python 2.7 at some point in the future, and the docker container calls `install.packages("reticulate")`, which always pulls down the latest package.
 - No dependency on AWS Dynamo or AWS Batch. Instead we use universal_pathlib for storage and Dask for compute. Works locally or in the cloud.
 - Uncouple downloading from running and analysis.
 - Download once, do N analyses (including run with M versions of R).
@@ -239,3 +240,173 @@ for doi in tqdm.tqdm(dois):
   ```
 - Code does not avoid downloading when file access is restricted, but these should fail hash validation and get marked as "failed to download".
 - Use `Rscript r_file`rather than `source(r_file)`.
+- Installing packages should be baked into the Docker image, not done after instantiation.
+- Code should measure resources used (wall time, compute time, RAM, and disk).
+- R's `install.packages` installs the latest version of code.
+
+# Email update
+
+Hello Ana Trisovic,
+
+There appear to be new issues.
+
+B3: The line `echo '\n' >> ~/.Rprofile` [14] writes a literal `\n` to the fourth line of `~/.Rprofile`, rather than a newline, which causes R to complain when running any script. See this debugging session [15].
+
+Removing that line [14] makes the problem go away, but it invites the question, is there some difference between the Docker image used in the experiment and the `Dockerfile` in the repository, or perhaps in the execution environment? Can you replicate this problem?
+
+B4: One particular Dataverse R script [16] contains `rm(list=ls())`, which gets `source(..)`ed by `exec_r_files.R`. Note that `rm(...)` and `ls(...)` remove or list variables in the R's global namespace. Then `exec_r_files.R` will fail because it cannot find its own variables (transcript of failure [17]). The script only writes one execution result to `run_log.csv`, where there are 2 R scripts to execute. However the released dataset _does_ have 2 execution results [18], so this problem must be absent on the docker container with which the experiment was run. I can fix this by moving the block labeled `restore local variables` [19] up just before calling `get_readability`.
+
+B5: R 3.6.0 cannot install `reticulate` because it is missing `RcppTOML` [20]. `docker build . --build-arg r_3.6.0 --tag r_3.6.0` will work, but `reticulate` is installed at runtime, so `docker run r_3.6.0 ...` will not [20]. Note that 4.0.1 will build and run, so I know the invocation is correct.
+
+`cannot install reticulate, missing RcppTOML`
+
+To fix this, I install `r-reticulate` and `r-r.utils` with Conda at build-time. However, when I do this, Conda runs out of memory trying to solve the package environment, so I also removed the `conda-forge` channel. The packageset can be solved without bringing in the extra packages in `conda-forge`.
+
+After resolving these issues and the ones in the previous email, I am able to build and run the Docker container. Of the first ten DOIs, our results seem to match completely.
+
+[14]: This line writes literal '\n' (not a newline) to `~/.Rprofile`
+https://github.com/atrisovic/dataverse-r-study/blob/master/docker/run_analysis.sh#L14
+
+[15]:
+```
+$ docker run -it --rm --entrypoint /bin/bash atrisovic/aws-image
+(r_3.6.0) root@e006afe47dd7:/usr/workdir# ./run_analysis.sh doi:10.7910/DVN/U3QJQZ
+Requesting file metadata from  http://dataverse.harvard.edu/api/datasets/:persistentId/versions/:latest?persistentId=doi:10.7910/DVN/U3QJQZ
+downloading from http://dataverse.harvard.edu/api//access/datafile/3651317
+... more of the same...
+Error: 4:1: unexpected input
+4: \
+    ^
+Execution halted
+[{'status': 'ok', 'doi': 'doi:10.7910/DVN/U3QJQZ', 'fileid': 'all'}]
+
+$ Rscript -e 'print(0)'
+Error: 4:1: unexpected input
+4: \
+    ^
+Execution halted
+
+$ cat ~/.Rprofile
+local({r <- getOption("repos");
+       r["CRAN"] <- "http://cran.us.r-project.org"; 
+       options(repos=r)})
+\n
+```
+
+
+[16]: Dataverse R script with `rm`
+https://dataverse.harvard.edu/file.xhtml?persistentId=doi:10.7910/DVN/XY2TUK/C7YFCJ&version=1.0
+
+[17]: Example transcript of failure due to a called script running `rm(...)`
+```
+$ ./run_analysis.sh doi:10.7910/DVN/XY2TUK
+Making 'packages.html' ... done
+[1] "BasSchub_ISQ_Shocks_ClusterRobust.R" "BasSchub_ISQ_Shocks_Figures.R"
+[1] "Executing:  BasSchub_ISQ_Shocks_ClusterRobust.R"
+[1] "Executing:  BasSchub_ISQ_Shocks_Figures.R"
+Error in get_readability_metrics(arg_temp, filename = r_file) : 
+  object 'r_file' not found
+Calls: get_readability_metrics -> py_resolve_dots
+Execution halted
+```
+
+[18]: `doi:10.7910/DVN/XY2TUK` replication https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/data/run_log_r40_no_env.csv#L5259
+
+[19]: Restore local variables block https://github.com/atrisovic/dataverse-r-study/blob/master/docker/exec_r_files.R#L42
+
+[20]: `reticulate` fails to install for 
+```
+$ docker build . --build-arg r_ver=r_3.6.0  --tag r-runner:3.6.0
+$ docker run -it --rm -e DOI="doi:10.7910/DVN/U3QJQZ" r-runner:3.6.0
+... output trimmed ...
+* installing *source* package ‘RcppTOML’ ...
+** package ‘RcppTOML’ successfully unpacked and MD5 sums checked
+** using staged installation
+** libs
+x86_64-conda_cos6-linux-gnu-c++ -std=gnu++17 -I"/opt/conda/envs/r_3.6.0/lib/R/include" -DNDEBUG -I../inst/include -DTOML_ENABLE_FLOAT16=0 -I"/opt/conda/envs/r_3.6.0/lib/R/library/Rcpp/include" -DNDEBUG -D_FORTIFY_SOURCE=2 -O2 -isystem /opt/conda/envs/r_3.6.0/include -I/opt/conda/envs/r_3.6.0/include -Wl,-rpath-link,/opt/conda/envs/r_3.6.0/lib  -fpic  -fvisibility-inlines-hidden  -fmessage-length=0 -march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem /opt/conda/envs/r_3.6.0/include -fdebug-prefix-map=/tmp/build/80754af9/r-base_1589917437985/work=/usr/local/src/conda/r-base-3.6.1 -fdebug-prefix-map=/opt/conda/envs/r_3.6.0=/usr/local/src/conda-prefix  -c RcppExports.cpp -o RcppExports.o
+x86_64-conda_cos6-linux-gnu-c++ -std=gnu++17 -I"/opt/conda/envs/r_3.6.0/lib/R/include" -DNDEBUG -I../inst/include -DTOML_ENABLE_FLOAT16=0 -I"/opt/conda/envs/r_3.6.0/lib/R/library/Rcpp/include" -DNDEBUG -D_FORTIFY_SOURCE=2 -O2 -isystem /opt/conda/envs/r_3.6.0/include -I/opt/conda/envs/r_3.6.0/include -Wl,-rpath-link,/opt/conda/envs/r_3.6.0/lib  -fpic  -fvisibility-inlines-hidden  -fmessage-length=0 -march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem /opt/conda/envs/r_3.6.0/include -fdebug-prefix-map=/tmp/build/80754af9/r-base_1589917437985/work=/usr/local/src/conda/r-base-3.6.1 -fdebug-prefix-map=/opt/conda/envs/r_3.6.0=/usr/local/src/conda-prefix  -c parse.cpp -o parse.o
+parse.cpp:21:10: fatal error: Rcpp/Lightest: No such file or directory
+ #include <Rcpp/Lightest>
+          ^~~~~~~~~~~~~~~
+compilation terminated.
+make: *** [/opt/conda/envs/r_3.6.0/lib/R/etc/Makeconf:175: parse.o] Error 1
+ERROR: compilation failed for package ‘RcppTOML’
+* removing ‘/opt/conda/envs/r_3.6.0/lib/R/library/RcppTOML’
+ERROR: dependency ‘RcppTOML’ is not available for package ‘reticulate’
+* removing ‘/opt/conda/envs/r_3.6.0/lib/R/library/reticulate’
+
+The downloaded source packages are in
+        ‘/tmp/Rtmp2nCFwR/downloaded_packages’
+Updating HTML index of packages in '.Library'
+Making 'packages.html' ... done
+Warning messages:
+1: In install.packages("reticulate") :
+  installation of package ‘RcppTOML’ had non-zero exit status
+2: In install.packages("reticulate") :
+  installation of package ‘reticulate’ had non-zero exit status
+Error in library(reticulate) : there is no package called ‘reticulate’
+Execution halted
+[{'status': 'ok', 'doi': 'doi:10.7910/DVN/U3QJQZ', 'fileid': 'all'}]
+```
+
+https://github.com/mamba-org/mamba/issues/640#issuecomment-749044745
+
+```
+ => RUN conda install mamba -n base -c conda-forge
+ => RUN mamba create -y --name r_3.6.0 r-base=3.6.0 r-esse...
+------
+ > [13/23] RUN mamba create -y --name r_3.6.0 r-base=3.6.0 r-essentials r-reticulate r-r.utils:
+#0 6.022 
+#0 6.022 # >>>>>>>>>>>>>>>>>>>>>> ERROR REPORT <<<<<<<<<<<<<<<<<<<<<<
+#0 6.022 
+#0 6.022     Traceback (most recent call last):
+#0 6.022       File "/opt/conda/lib/python2.7/site-packages/conda/exceptions.py", line 1079, in __call__
+#0 6.022         return func(*args, **kwargs)
+#0 6.022       File "/opt/conda/lib/python2.7/site-packages/mamba/mamba.py", line 522, in exception_converter
+#0 6.022         raise e
+#0 6.022     RuntimeError: Did not find key as expected!
+#0 6.022 
+#0 6.022 `$ /opt/conda/bin/mamba create -y --name r_3.6.0 r-base=3.6.0 r-essentials r-reticulate r-r.utils`
+#0 6.022 
+#0 6.022   environment variables:
+#0 6.022                  CIO_TEST=<not set>
+#0 6.022                CONDA_ROOT=/opt/conda
+#0 6.022                      PATH=/opt/conda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin
+#0 6.022                           :/bin
+#0 6.022        REQUESTS_CA_BUNDLE=<not set>
+#0 6.022             SSL_CERT_FILE=<not set>
+#0 6.022 
+#0 6.022      active environment : None
+#0 6.022        user config file : /root/.condarc
+#0 6.022  populated config files : 
+#0 6.022           conda version : 4.8.3
+#0 6.022     conda-build version : not installed
+#0 6.022          python version : 2.7.16.final.0
+#0 6.022        virtual packages : __glibc=2.28
+#0 6.022        base environment : /opt/conda  (writable)
+#0 6.022            channel URLs : https://repo.anaconda.com/pkgs/main/linux-64
+#0 6.022                           https://repo.anaconda.com/pkgs/main/noarch
+#0 6.022                           https://repo.anaconda.com/pkgs/r/linux-64
+#0 6.022                           https://repo.anaconda.com/pkgs/r/noarch
+#0 6.022           package cache : /opt/conda/pkgs
+#0 6.022                           /root/.conda/pkgs
+#0 6.022        envs directories : /opt/conda/envs
+#0 6.022                           /root/.conda/envs
+#0 6.022                platform : linux-64
+#0 6.022              user-agent : conda/4.8.3 requests/2.23.0 CPython/2.7.16 Linux/5.15.0-67-generic debian/10 glibc/2.28
+#0 6.022                 UID:GID : 0:0
+#0 6.022              netrc file : None
+#0 6.022            offline mode : False
+------
+Dockerfile:19
+--------------------
+  17 |     RUN conda install mamba -n base -c conda-forge
+  18 |     #RUN mamba create -y --name r_3.2.1 -c conda-forge r-base=3.2.1 r-essentials r-reticulate r-r.utils
+  19 | >>> RUN mamba create -y --name r_3.6.0 r-base=3.6.0 r-essentials r-reticulate r-r.utils
+  20 |     RUN mamba create -y --name r_4.0.1 -c conda-forge r-base=4.0.1 r-essentials r-reticulate r-r.utils
+  21 |     
+--------------------
+ERROR: failed to solve: process "/bin/sh -c mamba create -y --name r_3.6.0 r-base=3.6.0 r-essentials r-reticulate r-r.utils" did not complete successfully: exit code: 1
+```
+
+https://play.d2lang.com/?script=lFOxchMxEO3vK96YhhS5cUKOQgVNKPGEMVCfZXlta9BphaQjeEj-nZHOztmRDUNxxe6-fbv39ml_UYHfFeA8Lw11QwDk6YcASOcRmLxZr5umaSY5-1wNX2DTJwv8o7VpUvNx63NVKWktx1bbEKUxraeoVW9kJIGnblUB9xmAxR5RO6m-yw2Ft5MRO7laVBXg6UevPQXMlXNfH2afqqfL_HW-o0Cyr7QbQ3-BZp3EQaGqUmxXcgQq5yJ3RuBbIOQaImNfHpc533UgP4hYsB8pcpZ_BFzsvDSjo479TuA-c_reBnAfwWsMlRNYoUIfqO1kt5QCXx51VNs9T2TMUnoElPNzunW7WzFgsWIKSIcOvXPsIz7v4pYtbkdoscBKB7k01OYt1-w3JPBxyEFtpbVkBrmuc_EM_sxiOgRtN62_m94IzHFXT-sb6AC2ZgdtTwiPwcV2G24fddxyH9vM9ZAIPDmjlYyEuCXM8a5-X09Bv0jl-eFVV7kfdzq2vu2jNkFgxj8Jvs4R1p670R7lg6nr-mpxQnDGF5feAK4_4JK9xtrglBS_3D4FLyc8NV4qlTfJDUfCpvhUlYLk-J9eL_N__7R_lAXJnwAAAP__&

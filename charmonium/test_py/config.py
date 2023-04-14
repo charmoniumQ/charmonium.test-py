@@ -7,7 +7,7 @@ from typing import Any
 import azure.identity.aio
 import charmonium.cache
 import charmonium.freeze
-import distributed
+import dask.distributed
 import docker  # type: ignore
 import github
 import upath
@@ -84,6 +84,8 @@ for config in [charmonium.cache.freeze_config, charmonium.freeze.global_config]:
 # __setstate__ also calls azure.identity.aio.ManagedIdentityCredential.__init__
 # __getstate__ is dummy that returns something Truthy.
 class AzureCredential(azure.identity.aio.DefaultAzureCredential):
+    def __init__(self) -> None:
+        azure.identity.aio.DefaultAzureCredential.__init__(self)
     def __getstate__(self) -> str:
         return "hi" # must be Truthy
     def __setstate__(self, state: Any) -> None:
@@ -91,21 +93,19 @@ class AzureCredential(azure.identity.aio.DefaultAzureCredential):
 
 
 def data_path() -> pathlib.Path:
-    return pathlib.Path() / ".cache2"
-    # return upath.UPath(
-    #     "abfs://data4/",
-    #     account_name="wfregtest",
-    #     credential=AzureCredential(),
-    # )
+    return upath.UPath(
+        "abfs://data4/",
+        account_name="wfregtest",
+        credential=AzureCredential(),
+    )
 
 
 def index_path() -> pathlib.Path:
-    return pathlib.Path() / ".cache"
-    # return upath.UPath(
-    #     "abfs://index4/",
-    #     account_name="wfregtest",
-    #     credential=AzureCredential(),
-    # )
+    return upath.UPath(
+        "abfs://index4/",
+        account_name="wfregtest",
+        credential=AzureCredential(),
+    )
 
 
 def harvard_dataverse_token() -> str:
@@ -123,7 +123,23 @@ def github_client() -> github.Github:
 
 
 @functools.cache
-def dask_client() -> distributed.Client:
-    return distributed.Client(  # type: ignore
+def dask_client() -> dask.distributed.Client:
+    return dask.distributed.Client(  # type: ignore
             address="127.0.0.1:8786",
     )
+
+
+# @functools.cache
+# def update_code() -> None:
+#     remote_archive = index_path() / "main.tar.gz"
+#     with create_temp_dir() as temp_dir:
+#         temp_archive = temp_dir / "main.tar.gz"
+#         f"{f\"{3}\"}"
+#         subprocess.run(["tar", "--create", "--compress", f"--file={temp_archive}", "."], check=True)
+#         remote_archive.write_bytes(temp_archive.read_bytes())
+#     dask_client().register_worker_plugin(
+#         dask.distributed.diagnostics.plugin.PipInstall(
+#             packages=[abfs_to_url(remote_archive)],
+#             restart=True,
+#         ),
+#     )

@@ -1,6 +1,6 @@
 resource "azurerm_resource_group" "default" {
   location = var.location
-  name     = "terraform"
+  name     = var.rg_name
 }
 
 resource "azurerm_virtual_network" "default" {

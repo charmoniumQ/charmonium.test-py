@@ -33,7 +33,7 @@ class CompletedProcess:
     env: Mapping[str, str]
     cwd: pathlib.Path
     resource: ComputeResource
-    status: int
+    exit_code: int
     start: datetime.datetime
     stdout_b: bytes
     stderr_b: bytes
@@ -59,8 +59,8 @@ class CompletedProcess:
             *self.command
         )
 
-    def raise_for_status(self) -> None:
-        if self.status != 0:
+    def raise_for_exit_code(self) -> None:
+        if self.exit_code != 0:
             raise CalledProcessError(self)
 
 
@@ -70,7 +70,7 @@ class CalledProcessError(Exception):
     def __str__(self) -> str:
         return f"""
 Command: {shlex.join(self.process.command)}
-Status: {self.process.status}
+Exit_Code: {self.process.exit_code}
 Start: {self.process.start.isoformat()}
 Full command: {shlex.join(self.process.env_command)}
 Stdout:
@@ -98,7 +98,7 @@ def measure_command_execution(
         env=env,
         cwd=cwd,
     )
-    status = process.wait()
+    exit_code = process.wait()
     with process.oneshot():
         wall_time = datetime.datetime.now() - start
         cpu_times = process.cpu_times()
@@ -119,7 +119,7 @@ def measure_command_execution(
         env=env,
         cwd=cwd,
         resource=resource,
-        status=status,
+        exit_code=exit_code,
         start=start,
         stdout_b=process.stdout,
         stderr_b=process.stderr,
@@ -132,7 +132,7 @@ class CompletedContainer:
     command: tuple[str, ...]
     docker_command: str
     resource: ComputeResource
-    status: int
+    exit_code: int
     start: datetime.datetime
     stdout_b: bytes
     stderr_b: bytes
@@ -219,13 +219,13 @@ def measure_docker_execution(
         stdout = stdout_file.read_bytes()
         stderr = stderr_file.read_bytes()
         try:
-            mem_kb, system_sec, user_sec, wall_time, exit_status = time_output[-1].split(" ")
+            mem_kb, system_sec, user_sec, wall_time, exit_code = time_output[-1].split(" ")
         except (ValueError, IndexError):
             mem_kb = "0"
             system_sec = "0.0"
             user_sec = "0.0"
             wall_time = "0.0"
-            exit_status = "0"
+            exit_code = "0"
             warnings.warn(
                 f"Could not parse time output: {time_output!r}; setting those fields to 0"
             )
@@ -249,7 +249,7 @@ def measure_docker_execution(
         ]),
         command=command,
         image=image,
-        status=int(exit_status),
+        exit_code=int(exit_code),
         start=start,
         stdout_b=stdout,
         stderr_b=stderr,

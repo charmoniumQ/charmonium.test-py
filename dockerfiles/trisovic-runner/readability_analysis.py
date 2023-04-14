@@ -138,7 +138,7 @@ def get_readability_metrics(vars, filename=None, all_code=None, test=False):
     if test:
         return metrics_dict
     else:
-        with open('/results/metrics.txt', 'a') as f:
+        with open('metrics.txt', 'a') as f:
             json.dump(metrics_dict, f)
             f.write(',')
     

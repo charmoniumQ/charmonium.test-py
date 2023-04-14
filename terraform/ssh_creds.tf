@@ -31,6 +31,7 @@ resource "azurerm_network_security_group" "sshable_nsg" {
     destination_address_prefix = "*"
   }
 }
+
 resource "local_file" "ssh_config" {
   filename = "ssh_config"
   file_permission = "0644"

@@ -13,8 +13,10 @@ class RLangExecutor(WorkflowExecutor):
             mem_limit: int,
             condition: Condition,
     ) -> tuple[str, tuple[str, ...]]:
+        r_files = list(code_dir.glob("**/*.R")) + list(code_dir.glob("**/*.r"))
+        script = " && ".join(f"Rscript {r_file}" for r_file in r_files)
         return (
-            "wfregtest.azurecr.io/r-runner:bbc8f5993129142c878521c985339c23509f4f02",
+            "wfregtest.azurecr.io/r-runner:",
             ("Rscript", "/exec_r_files.R", str(code_dir)),
         )
 

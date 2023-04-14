@@ -17,12 +17,9 @@ def curl_files(dlurl, fullpath, fileid, d):
     if d == 3:
         # after code tries to curl 3 times without success
         # it writes down this results and it is the end of the run
-        with open('/results/run_log_ds.csv', 'a') as out_file:
+        with open('run_log_ds.csv', 'a') as out_file:
             out_file.write("{},{},checksum error\n".format(directory, fileid))
         return
-
-    # curl to present directory (sigh) but use filename.label as output
-    print("downloading from {}".format(dlurl))
 
     # -s suppresses progress bar, -S shows errors, -L follows redirects, -o is the output path/file
     curlcmd = 'curl -s -S -L -o "' + fullpath + '" ' + '\"' + dlurl + '\"'
@@ -34,13 +31,12 @@ def curl_files(dlurl, fullpath, fileid, d):
       hash.update(buf)
       localmd5 = hash.hexdigest()
     if md5 == localmd5:
-       print 'MD5 match: Dataverse ' + md5 + ' Local copy ' + localmd5
+       pass
     else:
        print 'CHECKSUM ERROR: Dataverse ' + md5 + ' Local copy ' + localmd5
        curl_files(dlurl, fullpath, fileid, d + 1)
 
 
-print("Requesting file metadata from  {}".format(query))
 
 r = requests.get(query)
 j = json.loads(r.text)
@@ -80,6 +76,6 @@ for obj in j['data']['files']:
         curl_files(dlurl, fullpath, fileid, 0)
 
 from os import path
-if not path.exists("/results/run_log_ds.csv"): # to check if no files had checksum error
-    with open('/results/run_log_ds.csv', 'a') as out_file:
+if not path.exists("run_log_ds.csv"): # to check if no files had checksum error
+    with open('run_log_ds.csv', 'a') as out_file:
         out_file.write("{},all,ok\n".format(directory))

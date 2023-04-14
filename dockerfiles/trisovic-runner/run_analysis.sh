@@ -1,4 +1,7 @@
 #!/bin/bash
+
+set -e
+
 doi="$1" # get DOI
 test=False
 
@@ -10,14 +13,17 @@ fi
 # set default CRAN mirror
 echo 'local({r <- getOption("repos");
        r["CRAN"] <- "http://cran.us.r-project.org"; 
-       options(repos=r)})' >> ~/.Rprofile
-echo '\n' >> ~/.Rprofile
+       options(repos=r)})
+' >> ~/.Rprofile
 
 # download dataset
+set +e
 timeout 1h python2 download_dataset.py "$doi"
+status=$?
+set -e
 
-if [ $? -eq 124 ]; then
-     echo "$doi,unknown,download error" >> /results/run_log.csv
+if [ $status -eq 124 ]; then
+     echo "$doi,unknown,download error" >> run_log.csv
 else
      # only needed for R 3.2.1
      #ln -s /lib/x86_64-linux-gnu/libreadline.so.7.0 /lib/x86_64-linux-gnu/libreadline.so.6
@@ -26,16 +32,28 @@ else
 
      # add brackets to metrics.txt so that the file is readable with json
      echo "[" >> metrics.txt
-     python2 set_environment.py $PWD
+
+     if [ -n "${clean_env}" ]; then
+         python2 set_environment.py $PWD
+     fi
 
      # execute R files with 3 hour limit
      timeout 5h Rscript exec_r_files.R "$doi"
 
      # note if 3hr time limit exceeded 
      if [ $? -eq 124 ]; then
-          echo "$doi,unknown,time limit exceeded" >> /results/run_log.csv
+          echo "$doi,unknown,time limit exceeded" >> run_log.csv
      fi
 
-     sed -i '$s/,$//' /results/metrics.txt
-     echo "]" >> /results/metrics.txt
+     sed -i '$s/,$//' metrics.txt
+     echo "]" >> metrics.txt
 fi
+
+
+# send results 
+mkdir -p /results
+for file in run_log_ds.csv run_log.csv metrics.csv run_log_st1.csv run_log_st.csv; do
+    if [ -f "${file}" ]; then
+        mv "${file}" "/results/${file}"
+    fi
+done
