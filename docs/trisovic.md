@@ -254,13 +254,17 @@ B3: The line `echo '\n' >> ~/.Rprofile` [14] writes a literal `\n` to the fourth
 
 Removing that line [14] makes the problem go away, but it invites the question, is there some difference between the Docker image used in the experiment and the `Dockerfile` in the repository, or perhaps in the execution environment? Can you replicate this problem?
 
-B4: One particular Dataverse R script [16] contains `rm(list=ls())`, which gets `source(..)`ed by `exec_r_files.R`. Note that `rm(...)` and `ls(...)` remove or list variables in the R's global namespace. Then `exec_r_files.R` will fail because it cannot find its own variables (transcript of failure [17]). The script only writes one execution result to `run_log.csv`, where there are 2 R scripts to execute. However the released dataset _does_ have 2 execution results [18], so this problem must be absent on the docker container with which the experiment was run. I can fix this by moving the block labeled `restore local variables` [19] up just before calling `get_readability`.
+B4: One particular Dataverse R script [16] contains `rm(list=ls())`, which gets `source(..)`ed by `exec_r_files.R`. Note that `rm(...)` and `ls(...)` remove or list variables in the R's global namespace. Then `exec_r_files.R` will fail because it cannot find its own variables (transcript of failure [17]). The script only writes one execution result to `run_log.csv`, where there are 2 R scripts to execute. I can fix this by moving the block labeled `restore local variables` [20] up just before calling `get_readability`.
 
-B5: R 3.6.0 cannot install `reticulate` because it is missing `RcppTOML` [20]. `docker build . --build-arg r_3.6.0 --tag r_3.6.0` will work, but `reticulate` is installed at runtime, so `docker run r_3.6.0 ...` will not [20]. Note that 4.0.1 will build and run, so I know the invocation is correct.
+Interestingly the 4.0 _does_ have 2 execution results [18], but the 3.6 only has 1 [19] so this problem must be absent on the docker container used in 4.0 but present in 3.6. Are you sure that the R 3.6 and R 4.0 results use the _exact same_ conditions except changing the `r_ver` while building the `Dockerfile` and changing the path to `Rscript` in `execute_files.py`?
+
+B5: R 3.6.0 cannot install `reticulate` because it is missing `RcppTOML` [21]. `docker build . --build-arg r_3.6.0 --tag r_3.6.0` will work, but `reticulate` is installed at runtime, so `docker run r_3.6.0 ...` will not [21]. Note that 4.0.1 will build and run, so I know the invocation is correct.
 
 `cannot install reticulate, missing RcppTOML`
 
 To fix this, I install `r-reticulate` and `r-r.utils` with Conda at build-time. However, when I do this, Conda runs out of memory trying to solve the package environment, so I also removed the `conda-forge` channel. The packageset can be solved without bringing in the extra packages in `conda-forge`.
+
+B6: `exec_r_files.R` sets Python to 2.7 before running `execute_files.py`, but `execute_files.py` uses 3.x features, such as `from subprocess import TimeoutError`. Changing this to be 3.5 makes the script work.
 
 After resolving these issues and the ones in the previous email, I am able to build and run the Docker container. Of the first ten DOIs, our results seem to match completely.
 
@@ -310,11 +314,13 @@ Calls: get_readability_metrics -> py_resolve_dots
 Execution halted
 ```
 
-[18]: `doi:10.7910/DVN/XY2TUK` replication https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/data/run_log_r40_no_env.csv#L5259
+[18]: 2 entries for `doi:10.7910/DVN/XY2TUK` in R 4.0 data https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/data/run_log_r40_no_env.csv#L5259
 
-[19]: Restore local variables block https://github.com/atrisovic/dataverse-r-study/blob/master/docker/exec_r_files.R#L42
+[19]: 1 entry   for `doi:10.7910/DVN/XY2TUK` in R 3.6 data https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/data/run_log_r36_no_env.csv#L3161
 
-[20]: `reticulate` fails to install for 
+[20]: Restore local variables block https://github.com/atrisovic/dataverse-r-study/blob/master/docker/exec_r_files.R#L42
+
+[21]: `reticulate` fails to install for 
 ```
 $ docker build . --build-arg r_ver=r_3.6.0  --tag r-runner:3.6.0
 $ docker run -it --rm -e DOI="doi:10.7910/DVN/U3QJQZ" r-runner:3.6.0

@@ -78,7 +78,9 @@ if __name__ == "__main__":
         proc, result = analyze(doi)
         print(doi)
         if proc.exit_code != 0:
-            print("return != 0", proc)
+            print("return != 0")
+            sys.stdout.buffer.write(proc.stdout_b)
+            sys.stdout.buffer.write(proc.stderr_b)
         print("proc len", len(pickle.dumps(proc)))
         print("files size", result.size)
         run_log = pathlib.Path("run_log.csv")

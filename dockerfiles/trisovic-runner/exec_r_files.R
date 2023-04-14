@@ -5,12 +5,12 @@ dir_path_doi = local_args[1]
 setwd("/usr/workdir")
 library(stringr)
 
-if (!require R.utils) {
+if (!require(R.utils)) {
     install.packages("R.utils")
     library(R.utils)
 }
 
-if (!require reticulate) {
+if (!require(reticulate)) {
     install.packages("reticulate")
     library(reticulate)
 }
@@ -38,13 +38,13 @@ for (r_file in r_files) {
 	external_vars <- ls()
 	external_vars <- external_vars[!external_vars %in% local_vars]
 
-	# restore local variables
-	load("get_reprod.RData")
-
-	use_python("/usr/bin/python2.7")
+	use_python("/opt/conda/envs/py3/bin/python3.5")
 	source_python('readability_analysis.py')
 	arg_temp <- paste(external_vars, collapse=' ')
 	get_readability_metrics(arg_temp, filename=r_file) 
+
+	# restore local variables
+	load("get_reprod.RData")
 
 	# if there was an error
 

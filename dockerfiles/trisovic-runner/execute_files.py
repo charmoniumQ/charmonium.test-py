@@ -2,7 +2,8 @@ def execute_files(f):
     from subprocess import PIPE, CalledProcessError, check_call, Popen, TimeoutExpired
 
     # rerun f without using 'source'
-    p3 = Popen(['/opt/conda/envs/r_4.0.1/bin/Rscript', f], \
+    # Use Rscript on the $PATH
+    p3 = Popen(['Rscript', f], \
         stdout=PIPE, stderr=PIPE)
     res = ""
 
