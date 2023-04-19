@@ -63,7 +63,7 @@ def get_trisovic_results(r_version: str, env_clean: bool) -> Mapping[str, Mappin
 if __name__ == "__main__":
     dask_client = config.dask_client()
     dois = get_dois()
-    n_dois = 3000
+    n_dois = int(sys.argv[1] if len(sys.argv) > 1 else 10)
     print(f"Dispatching jobs")
     results = dask.compute(*(analyze(doi) for doi in dois[:n_dois]))
     trisovic_results = get_trisovic_results(r_version="4.0", env_clean=False)
