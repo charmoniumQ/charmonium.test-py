@@ -3,6 +3,7 @@
 ## Introduction
 
 _What is the question asked by the underlying study?_
+ * What did the authors learn (claim)?
 
 _Why bother reproducing this?_
 
@@ -22,16 +23,23 @@ _Lay out the other sections._
 
 ### Communication with the original authors
 
+### What would we do differently if we were redoing our reproduction from scratch?
+(or maybe this is part of the first two previous subsections?)
+
 ## Conclusion
 
 _Can we reproduce the main claims of the paper?_
+* How close can we come?
+* Do the differences matter?
 
 ### Lessons learned
 
 _How to make more things reproducible?_
+* What would we have liked the original authors to have done differently then?
+* What would the original authors likely do differently now (based on newer understanding/practices/tools/etc)?
 
 ## Appendix I: Instructions for reproducing
 
-_Source code archival_
+_Source code archive_
 
 [1]: https://www.acm.org/publications/badging-terms
