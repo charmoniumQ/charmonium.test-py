@@ -1,5 +1,7 @@
 This directory was sourced from [Trisovic et al.][1] with modifications to make it run.
 
+See `diff` for a list of modifications.
+
 [1]: https://github.com/atrisovic/dataverse-r-study/tree/master/docker
 
 # Analysis environment

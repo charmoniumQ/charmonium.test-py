@@ -21,6 +21,9 @@ def curl_files(dlurl, fullpath, fileid, d):
             out_file.write("{},{},checksum error\n".format(directory, fileid))
         return
 
+    # curl to present directory (sigh) but use filename.label as output
+    #print("downloading from {}".format(dlurl))
+
     # -s suppresses progress bar, -S shows errors, -L follows redirects, -o is the output path/file
     curlcmd = 'curl -s -S -L -o "' + fullpath + '" ' + '\"' + dlurl + '\"'
     subprocess.call(curlcmd, shell=True)        # give slow disks a second
@@ -32,11 +35,13 @@ def curl_files(dlurl, fullpath, fileid, d):
       localmd5 = hash.hexdigest()
     if md5 == localmd5:
        pass
+       #print 'MD5 match: Dataverse ' + md5 + ' Local copy ' + localmd5
     else:
        print 'CHECKSUM ERROR: Dataverse ' + md5 + ' Local copy ' + localmd5
        curl_files(dlurl, fullpath, fileid, d + 1)
 
 
+#print("Requesting file metadata from  {}".format(query))
 
 r = requests.get(query)
 j = json.loads(r.text)

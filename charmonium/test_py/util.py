@@ -28,13 +28,15 @@ def get_unused_path(prefix: pathlib.Path, candidates: Iterable[str]) -> pathlib.
         raise FileExistsError("No unused path")
 
 
-if tempfile.gettempdir().startswith("/tmp"):
-    # Note that paths in /tmp won't work.
-    # see https://github.com/sylabs/singularity/issues/1331
-    tmp_root = pathlib.Path.home() / "tmp"
-else:
+# Note that paths in /tmp won't work.
+# see https://github.com/sylabs/singularity/issues/1331
+# Also note, this path should be mounted from the container to the host in the exact same path.
+if pathlib.Path("/my-tmp").exists():
+    tmp_root = pathlib.Path("/my-tmp")
+elif not tempfile.gettempdir().startswith("/tmp"):
     tmp_root = pathlib.Path(tempfile.gettempdir())
-
+else:
+    tmp_root = pathlib.Path.home() / "tmp"
 
 @contextlib.contextmanager
 def create_temp_dir(cleanup: bool = True) -> Generator[pathlib.Path, None, None]:

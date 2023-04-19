@@ -156,6 +156,8 @@ def measure_docker_execution(
         resource_file = temp_dir / "resources"
         stdout_file = temp_dir / "stdout"
         stderr_file = temp_dir / "stderr"
+        # stdout_file.touch()
+        # stderr_file.touch()
         real_command = (
             "-i",
             "-c",

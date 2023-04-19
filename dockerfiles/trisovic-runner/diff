@@ -1,0 +1,195 @@
+Dockerfile
+--- /tmp/tmp.ISfIieKKQS/docker/Dockerfile	2023-04-18 22:16:40.984688188 -0500
++++ ./Dockerfile	2023-04-18 22:13:33.679411454 -0500
+@@ -1,9 +1,11 @@
+ FROM continuumio/miniconda
+ 
+-RUN apt-get update
++# Debian Buster is end-of-life; this flag lets apt-get succeed anyway.
++RUN apt-get update --allow-releaseinfo-change
+ RUN apt-get install -y software-properties-common
+ 
+-RUN apt install -y curl     vim.tiny     python     python-pip
++# We need time to measure experiments
++RUN apt install -y curl     vim.tiny     python     python-pip      time
+ RUN pip install requests==2.23.0
+ RUN pip install boto3==1.12.40
+ 
+@@ -14,14 +16,16 @@
+ RUN echo 'alias vim="vim.tiny"' >> ~/.bashrc
+ 
+ RUN conda init bash
+-RUN conda create -y --name r_3.2.1 -c conda-forge r=3.2.1 r-essentials
+-RUN conda create -y --name r_3.6.0 -c r r=3.6.0 r-essentials
++# R 3.2.1 is no longer found in this repository
++#RUN conda create -y --name r_3.2.1 -c conda-forge r=3.2.1 r-essentials
++# Add r-reticulate because install.packages wasn't working for that
++RUN conda create -y --name r_3.6.0 r=3.6.0 r-essentials r-r.utils r-reticulate
+ RUN conda create -y -n r_4.0.1 -c conda-forge r-base=4.0.1 r-essentials
+ 
+ RUN conda create -y --name py3 python=3.5
+ #RUN apt-get install -y libncurses5
+ 
+-ARG r_ver=r_3.6.0
++ARG r_ver=r_4.0.1
+ RUN echo "conda activate $r_ver" >> ~/.bashrc
+ ENV PATH="/opt/conda/envs/$r_ver/bin:${PATH}"
+ 
+download_dataset.py
+--- /tmp/tmp.ISfIieKKQS/docker/download_dataset.py	2023-04-18 22:16:40.984688188 -0500
++++ ./download_dataset.py	2023-04-16 10:54:11.742411103 -0500
+@@ -22,7 +22,7 @@
+         return
+ 
+     # curl to present directory (sigh) but use filename.label as output
+-    print("downloading from {}".format(dlurl))
++    #print("downloading from {}".format(dlurl))
+ 
+     # -s suppresses progress bar, -S shows errors, -L follows redirects, -o is the output path/file
+     curlcmd = 'curl -s -S -L -o "' + fullpath + '" ' + '\"' + dlurl + '\"'
+@@ -34,13 +34,14 @@
+       hash.update(buf)
+       localmd5 = hash.hexdigest()
+     if md5 == localmd5:
+-       print 'MD5 match: Dataverse ' + md5 + ' Local copy ' + localmd5
++       pass
++       #print 'MD5 match: Dataverse ' + md5 + ' Local copy ' + localmd5
+     else:
+        print 'CHECKSUM ERROR: Dataverse ' + md5 + ' Local copy ' + localmd5
+        curl_files(dlurl, fullpath, fileid, d + 1)
+ 
+ 
+-print("Requesting file metadata from  {}".format(query))
++#print("Requesting file metadata from  {}".format(query))
+ 
+ r = requests.get(query)
+ j = json.loads(r.text)
+exec_r_files.R
+--- /tmp/tmp.ISfIieKKQS/docker/exec_r_files.R	2023-04-18 22:16:40.988688215 -0500
++++ ./exec_r_files.R	2023-04-16 14:56:11.776962732 -0500
+@@ -3,13 +3,20 @@
+ dir_path_doi = local_args[1]
+ 
+ setwd("/usr/workdir")
+-library(stringr)
++library(stringr, quietly=TRUE, warn.conflicts=FALSE)
+ 
+-install.packages("R.utils")
+-library(R.utils)
+-
+-install.packages("reticulate")
+-library(reticulate)
++# Install if not already isntalled.
++# Sometimes, we install this with Conda in the Dockerfile
++# We might run the script twice in an interactive session, so only install once.
++if (!require(R.utils, quietly=TRUE, warn.conflicts=FALSE)) {
++	install.packages("R.utils", quiet=TRUE)
++	library(R.utils, quietly=TRUE, warn.conflicts=FALSE)
++}
++
++if (!require(reticulate, quietly=TRUE, warn.conflicts=FALSE)) {
++	install.packages("reticulate", quiet=TRUE)
++	library(reticulate, quietly=TRUE, warn.conflicts=FALSE)
++}
+ 
+ r_files = list.files(".", pattern="\\.[Rr]\\>", recursive=FALSE, full.names=FALSE)
+ r_files <- r_files[r_files != "exec_r_files.R"]
+@@ -34,14 +41,14 @@
+ 	external_vars <- ls()
+ 	external_vars <- external_vars[!external_vars %in% local_vars]
+ 
+-	use_python("/usr/bin/python2.7")
++	# restore local variables
++	load("get_reprod.RData")
++
++	use_python("/opt/conda/envs/py3/bin/python3.5")
+ 	source_python('readability_analysis.py')
+ 	arg_temp <- paste(external_vars, collapse=' ')
+ 	get_readability_metrics(arg_temp, filename=r_file) 
+ 
+-	# restore local variables
+-	load("get_reprod.RData")
+-
+ 	# if there was an error
+ 
+ 	if (class(error) == "try-error") {
+execute_files.py
+--- /tmp/tmp.ISfIieKKQS/docker/execute_files.py	2023-04-18 22:16:40.988688215 -0500
++++ ./execute_files.py	2023-04-18 16:42:09.355075830 -0500
+@@ -2,7 +2,8 @@
+     from subprocess import PIPE, CalledProcessError, check_call, Popen, TimeoutExpired
+ 
+     # rerun f without using 'source'
+-    p3 = Popen(['/opt/conda/envs/r_4.0.1/bin/Rscript', f], \
++    # Use Rscript on the $PATH
++    p3 = Popen(['Rscript', f], \
+         stdout=PIPE, stderr=PIPE)
+     res = ""
+ 
+README.md
+--- /tmp/tmp.ISfIieKKQS/docker/README.md	2023-04-18 22:16:40.984688188 -0500
++++ ./README.md	2023-04-18 22:16:00.108409683 -0500
+@@ -1,3 +1,9 @@
++This directory was sourced from [Trisovic et al.][1] with modifications to make it run.
++
++See `diff` for a list of modifications.
++
++[1]: https://github.com/atrisovic/dataverse-r-study/tree/master/docker
++
+ # Analysis environment
+ 
+ Building the Docker image:
+run_analysis.sh
+--- /tmp/tmp.ISfIieKKQS/docker/run_analysis.sh	2023-04-18 22:16:40.988688215 -0500
++++ ./run_analysis.sh	2023-04-18 22:14:44.691895680 -0500
+@@ -1,4 +1,6 @@
+ #!/bin/bash
++# set -e helps me identify failed runs
++set -e
+ doi="$1" # get DOI
+ test=False
+ 
+@@ -11,12 +13,17 @@
+ echo 'local({r <- getOption("repos");
+        r["CRAN"] <- "http://cran.us.r-project.org"; 
+        options(repos=r)})' >> ~/.Rprofile
+-echo '\n' >> ~/.Rprofile
++# This will cause errors because it prints a literal \n:
++#echo '\n' >> ~/.Rprofile
+ 
+ # download dataset
++# Also disable and re-enable set -e
++set +e
+ timeout 1h python2 download_dataset.py "$doi"
++status=$?
++set -e
+ 
+-if [ $? -eq 124 ]; then
++if [ $status -eq 124 ]; then
+      echo "$doi,unknown,download error" >> run_log.csv
+ else
+      # only needed for R 3.2.1
+@@ -26,7 +33,10 @@
+ 
+      # add brackets to metrics.txt so that the file is readable with json
+      echo "[" >> metrics.txt
++     # This lets me use the same image when cleaning and when not cleaning
++     if [ -n "${clean_env}" ]; then
+      python2 set_environment.py $PWD
++     fi
+ 
+      # execute R files with 3 hour limit
+      timeout 5h Rscript exec_r_files.R "$doi"
+@@ -41,4 +51,11 @@
+ fi
+ 
+ # send results 
+-python2 save_result_in_dynamo.py "$doi" "$test"
++# Instead of DyanmoDB, we will save the results in /results
++# The caller will pick them up from a volume-mount
++mkdir -p /results
++for file in run_log_ds.csv run_log.csv metrics.csv run_log_st1.csv run_log_st.csv; do
++    if [ -f "${file}" ]; then
++        mv "${file}" "/results/${file}"
++    fi
++done

@@ -266,6 +266,8 @@ To fix this, I install `r-reticulate` and `r-r.utils` with Conda at build-time. 
 
 B6: `exec_r_files.R` sets Python to 2.7 before running `execute_files.py`, but `execute_files.py` uses 3.x features, such as `from subprocess import TimeoutError`. Changing this to be 3.5 makes the script work.
 
+C3: In the `Dockerfile`, the R 3.6.0 environment installs `r`, while the R 4.0.1 environment installs `r-base`. `r` depends on `r-base` and `r-recommended`. Therefore, the 3.6.0 environment will have packages that the 4.0.1 environment does not have. Some scripts may succeed in R 3.6.0 and fail in R 4.0.1, not because of the R version, but because the difference in installed packages.
+
 After resolving these issues and the ones in the previous email, I am able to build and run the Docker container. Of the first ten DOIs, our results seem to match completely.
 
 [14]: This line writes literal '\n' (not a newline) to `~/.Rprofile`

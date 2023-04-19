@@ -56,19 +56,16 @@ resource "azurerm_linux_virtual_machine" "manager" {
     private_key = tls_private_key.developer.private_key_openssh
   }
   provisioner "file" {
-      content = tls_private_key.manager.private_key_openssh
-      destination = "/home/${var.username}/.ssh/id_rsa"
+    content = tls_private_key.manager.private_key_openssh
+    destination = "/home/${var.username}/.ssh/id_rsa"
   }
   provisioner "remote-exec" {
-    inline = [
-      "chmod 0600 ~/.ssh/id_rsa",
-      "sudo apt-get install --yes docker.io python3-pip",
-      "sudo usermod -aG docker $USER",
-      "pip install --user azure-cli",
-      "~/.local/bin/az login --identity",
-	  "~/.local/bin/az acr login --name ${azurerm_container_registry.default.name}",
-	  "touch ~/.hushlogin",
-    ]
+    inline = concat(
+      [
+        "chmod 0600 ~/.ssh/id_rsa",
+      ],
+      var.vm_setup_script,
+    )
   }
 }
 

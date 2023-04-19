@@ -69,3 +69,17 @@ variable "vm_image" {
     version   = "22.04.202211160"
   }
 }
+
+variable "vm_setup_script" {
+  type = list
+  default = [
+    # https://askubuntu.com/questions/1367139/apt-get-upgrade-auto-restart-services
+    "sudo sed -i 's/#$nrconf{restart} = '\"'\"'i'\"'\"';/$nrconf{restart} = '\"'\"'a'\"'\"';/g' /etc/needrestart/needrestart.conf",
+    # Silence MOTD
+    "touch ~/.hushlogin",
+    "sudo apt-get update",
+    "sudo apt-get install --yes docker.io python3-pip rsync",
+    "sudo usermod -aG docker $USER",
+    "pip install --no-warn-script-location --user azure-cli",
+  ]
+}

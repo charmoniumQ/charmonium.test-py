@@ -32,6 +32,8 @@
         ];
         nix-site-dependencies = [
           pkgs.hwloc
+          pkgs.gitMinimal
+          pkgs.file
         ];
         # see https://lazamar.co.uk/nix-versions/
         oldNixpkgs = nixpkgsGitHash:
@@ -64,6 +66,9 @@
           azure-mgmt-appcontainers = [ "setuptools" ];
           azure-cli-core = [ "setuptools" ];
           azure-cli = [ "setuptools" ];
+          attrs = [ "hatchling" "hatch-fancy-pypi-readme" "hatch-vcs" ];
+          dask = [ "versioneer" ];
+          distributed = [ "versioneer" ];
         };
         p2n-overrides' = p2n.defaultPoetryOverrides.extend (self: super:
           builtins.mapAttrs (package: build-requirements:
@@ -187,6 +192,7 @@
 
           "jupyter-image" = pkgs.dockerTools.buildLayeredImage {
             name = "jupyter-image";
+            maxLayers = 127;
             contents = [
               (p2n.mkPoetryEnv {
                 projectDir = ./dockerfiles/jupyter;
@@ -199,6 +205,7 @@
           "r-runner" = pkgs.dockerTools.buildLayeredImage {
             name = "r-runner";
             tag = "3.2.4";
+            maxLayers = 125;
             contents = [
               ((oldNixpkgs ((import ./dockerfiles/r-versions.nix)."3.0.3")).R)
             ];

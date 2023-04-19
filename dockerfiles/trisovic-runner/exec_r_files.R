@@ -3,16 +3,19 @@ local_args = commandArgs(trailingOnly=TRUE)
 dir_path_doi = local_args[1]
 
 setwd("/usr/workdir")
-library(stringr)
+library(stringr, quietly=TRUE, warn.conflicts=FALSE)
 
-if (!require(R.utils)) {
-    install.packages("R.utils")
-    library(R.utils)
+# Install if not already isntalled.
+# Sometimes, we install this with Conda in the Dockerfile
+# We might run the script twice in an interactive session, so only install once.
+if (!require(R.utils, quietly=TRUE, warn.conflicts=FALSE)) {
+	install.packages("R.utils", quiet=TRUE)
+	library(R.utils, quietly=TRUE, warn.conflicts=FALSE)
 }
 
-if (!require(reticulate)) {
-    install.packages("reticulate")
-    library(reticulate)
+if (!require(reticulate, quietly=TRUE, warn.conflicts=FALSE)) {
+	install.packages("reticulate", quiet=TRUE)
+	library(reticulate, quietly=TRUE, warn.conflicts=FALSE)
 }
 
 r_files = list.files(".", pattern="\\.[Rr]\\>", recursive=FALSE, full.names=FALSE)
@@ -38,13 +41,13 @@ for (r_file in r_files) {
 	external_vars <- ls()
 	external_vars <- external_vars[!external_vars %in% local_vars]
 
+	# restore local variables
+	load("get_reprod.RData")
+
 	use_python("/opt/conda/envs/py3/bin/python3.5")
 	source_python('readability_analysis.py')
 	arg_temp <- paste(external_vars, collapse=' ')
 	get_readability_metrics(arg_temp, filename=r_file) 
-
-	# restore local variables
-	load("get_reprod.RData")
 
 	# if there was an error
 

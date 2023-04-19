@@ -16,8 +16,11 @@ for logger_name in ["charmonium.cache.perf", "charmonium.cache.ops", "charmonium
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.DEBUG)
     fname = pathlib.Path(logger.name.replace(".", "_") + ".log")
-    if fname.exists() and len(fname.read_text()) > 1024 * 256:
-        fname.unlink()
+    try:
+        if fname.exists() and fname.stat().st_size > 1024 * 256:
+            fname.unlink()
+    except FileNotFoundError:
+        pass
     fh = logging.FileHandler(fname)
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter("%(message)s"))
@@ -56,9 +59,10 @@ for config in [charmonium.cache.freeze_config, charmonium.freeze.global_config]:
         ("charmonium.time_block.time_block", "TimeBlock"),
         ("aiohttp.client", "ClientSession"),
         ("asyncio.coroutines", "CoroWrapper"),
+        ("charmonium.test_py.analyses.measure_command_execution.CompletedContainer", "CompletedContainer"),
     })
     config.ignore_objects_by_class.update({
-            ("charmonium.time_block.time_block", "TimeBlock"),
+        ("charmonium.time_block.time_block", "TimeBlock"),
     })
     config.ignore_functions.update({
         ("requests.api", "get"),
@@ -75,6 +79,8 @@ for config in [charmonium.cache.freeze_config, charmonium.freeze.global_config]:
         ("charmonium.time_block.time_block", "ctx"),
         ("asyncio.runners", "run"),
         ("asyncio.tasks", "gather"),
+        ("charmonium.test_py.analyses.file_bundle", "from_path"),
+        ("charmonium.test_py.analyses.measure_command_execution", "measure_docker_execution"),
     })
 
 
@@ -124,22 +130,7 @@ def github_client() -> github.Github:
 
 @functools.cache
 def dask_client() -> dask.distributed.Client:
-    return dask.distributed.Client(  # type: ignore
-            address="127.0.0.1:8786",
-    )
+    return dask.distributed.Client(address="tcp://manager:9000")  # type: ignore
 
 
-# @functools.cache
-# def update_code() -> None:
-#     remote_archive = index_path() / "main.tar.gz"
-#     with create_temp_dir() as temp_dir:
-#         temp_archive = temp_dir / "main.tar.gz"
-#         f"{f\"{3}\"}"
-#         subprocess.run(["tar", "--create", "--compress", f"--file={temp_archive}", "."], check=True)
-#         remote_archive.write_bytes(temp_archive.read_bytes())
-#     dask_client().register_worker_plugin(
-#         dask.distributed.diagnostics.plugin.PipInstall(
-#             packages=[abfs_to_url(remote_archive)],
-#             restart=True,
-#         ),
-#     )
+cache_size = "100GiB"
