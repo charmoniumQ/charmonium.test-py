@@ -3,6 +3,7 @@
 ## Introduction
 
 _Define "computational experiments", why are they important, why bother reproducing them._
+(Dan: I think this is really about experiments that are captured as workflows, not computational experiments more generally?)
 
 _The result of this work is a software platform. The platform can be used to systematically gather, run, and store the results of computational experiments._
 
@@ -21,6 +22,7 @@ _Lay out the other sections._
 | Taverna | myExperiment | Zhao | 10.1109/eScience.2012.6404482 |
 | Any | Any | Grayson | This work |
 
+(Dan: There's a lot of work on computational reproducibility in general, most of which may or may not be relevant depending on what the defintion of "computational experiments" is, such as [Guix](https://guix.gnu.org), tools that are part of https://www.repronim.org, stuff from Tanu Malik like SciUnit (https://cdmdicewebprd01.dpu.depaul.edu/projects/advancedcontainers/), ... )
 ## Methodology
 
 _Describe software system. Describe the rationale. Why did we use Dask, etc.?_
@@ -47,6 +49,6 @@ _Is this useful? We think so. What kinds of future research does this enable?_
 
 ## Appendix I: Instructions for reproducing
 
-_Source code archival_
+_Source code archive_
 
 [1]: https://www.acm.org/publications/badging-terms
