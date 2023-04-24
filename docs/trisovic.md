@@ -418,3 +418,33 @@ ERROR: failed to solve: process "/bin/sh -c mamba create -y --name r_3.6.0 r-bas
 ```
 
 https://play.d2lang.com/?script=lFOxchMxEO3vK96YhhS5cUKOQgVNKPGEMVCfZXlta9BphaQjeEj-nZHOztmRDUNxxe6-fbv39ml_UYHfFeA8Lw11QwDk6YcASOcRmLxZr5umaSY5-1wNX2DTJwv8o7VpUvNx63NVKWktx1bbEKUxraeoVW9kJIGnblUB9xmAxR5RO6m-yw2Ft5MRO7laVBXg6UevPQXMlXNfH2afqqfL_HW-o0Cyr7QbQ3-BZp3EQaGqUmxXcgQq5yJ3RuBbIOQaImNfHpc533UgP4hYsB8pcpZ_BFzsvDSjo479TuA-c_reBnAfwWsMlRNYoUIfqO1kt5QCXx51VNs9T2TMUnoElPNzunW7WzFgsWIKSIcOvXPsIz7v4pYtbkdoscBKB7k01OYt1-w3JPBxyEFtpbVkBrmuc_EM_sxiOgRtN62_m94IzHFXT-sb6AC2ZgdtTwiPwcV2G24fddxyH9vM9ZAIPDmjlYyEuCXM8a5-X09Bv0jl-eFVV7kfdzq2vu2jNkFgxj8Jvs4R1p670R7lg6nr-mpxQnDGF5feAK4_4JK9xtrglBS_3D4FLyc8NV4qlTfJDUfCpvhUlYLk-J9eL_N__7R_lAXJnwAAAP__&
+
+# More
+
+A4: One needs to change two things to use a different R version: one is the build_arg (which gets put in `~/.bashrc`) and change the path to Rscript in `execute_files.py`. The docker images appear to have only done the former, while the latter was set to R 4.0.1. This means that the "Plan B" mode of exceution, which is to call `execute_files.py` will always be using R 4.0.1.
+
+```
+images=(atrisovic/aws-image atrisovic/aws-image-r36-m atrisovic/aws-image-r32 atrisovic/aws-image-r40)
+for image in "${images[@]}"; do
+    echo "${image}"
+    docker run --rm -it --entrypoint /bin/bash "${image}" -c 'cat ~/.bashrc' | grep 'conda activate r_'
+    docker run --rm -it --entrypoint /bin/bash "${image}" -c 'cat execute_files.py' | grep 'Rscript'
+    echo
+done
+```
+
+CN: Doesn't take into account non-repeatable errors.
+
+CN: Doesn't use the exact same scripts in each case.
+
+CN: Do they undercount scripts when the runner crashes?
+
+CN: Aggregation for Datasets should be "success iff all files succeed" not "success iff any succeed"
+
+We note that while 9078 R files were detected in 2109 datasets, not all of them got assigned a result. Sometimes R files exceeded the allocated time, leaving no time for the rest of the files to execute.
+
+CN: No statistical tests applied to assess significance.
+
+CN: "A potential cause may be the use of incompatible library versions in our re-execution step as the R software automatically installs the latest version of a library."
+
+CN: Note that Trisovic et al. defines success rate as the ratio of success to success plus errors (i.e., excluding timed out codes).
