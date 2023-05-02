@@ -6,11 +6,12 @@ import pathlib
 import warnings
 from typing import Awaitable
 
+import aiofiles
+import aiohttp
 import charmonium.time_block
 import requests
-import aiohttp
 
-from ..config import harvard_dataverse_token
+from ..config import harvard_dataverse_token, ssl_context
 from ..types import Code
 
 # TODO: download a Zip archive of the whole dataset instead of downloading each file individually.
@@ -28,7 +29,7 @@ class DataverseDataset(Code):
         url = f"{self.server}/datasets/:persistentId/versions/:latest?persistentId={self.persistent_id}"
         response = requests.get(
             url,
-            headers={"X-Dataverse-key": harvard_dataverse_token()},
+            # headers={"X-Dataverse-key": harvard_dataverse_token()},
         )
         response_obj = response.json()
         if "data" not in response_obj:
@@ -38,18 +39,18 @@ class DataverseDataset(Code):
             for file in response_obj['data']['files']
         )
 
-
     async def acheckout(self, path: pathlib.Path) -> None:
         # See https://github.com/atrisovic/dataverse-r-study/blob/master/docker/download_dataset.py
         async with aiohttp.ClientSession() as session:
             async with session.get(
                     f"{self.server}/datasets/:persistentId/versions/:latest?persistentId={self.persistent_id}",
-                    headers={"X-Dataverse-key": harvard_dataverse_token()},
+                    # headers={"X-Dataverse-key": harvard_dataverse_token()},
+                    ssl=ssl_context(),
             ) as response:
                 response_obj = await response.json()
 
             fetches = list[Awaitable[None]]()
-            for file in response_obj['data']['files']:
+            for file in response_obj.get('data', {}).get('files', []):
                 if file["restricted"]:
                     continue
                 fileid = file['dataFile']['id']
@@ -73,6 +74,7 @@ class DataverseDataset(Code):
             await asyncio.gather(*fetches)
 
     async def fetch(self, session: aiohttp.ClientSession, dlurl: str, dest: pathlib.Path, expected_hash: str, size: int) -> None:
+        chunk_size = 1024 * 1024 * 64 # 64 MiB
         speed_kbps = 100
         safety_factor = 10
         min_timeout = 30
@@ -84,15 +86,18 @@ class DataverseDataset(Code):
         try:
             async with session.get(
                     dlurl,
-                    headers={"X-Dataverse-key": harvard_dataverse_token()},
+                    # headers={"X-Dataverse-key": harvard_dataverse_token()},
                     timeout=timeout,
+                    ssl=ssl_context(),
             ) as response:
-                result = await response.read()
+                hasher = hashlib.md5()
+                dest.parent.mkdir(exist_ok=True, parents=True)
+                async with aiofiles.open(str(dest), mode="wb") as dest_file:
+                    async for chunk in response.content.iter_chunked(chunk_size):
+                        await dest_file.write(chunk)
+                        hasher.update(chunk)
         except Exception as exc:
-            warnings.warn(f"Couldn't get: {dlurl} {timeout=} {size=} {exc=}")
-        downloaded_hash = hashlib.md5(result).hexdigest()
-        if downloaded_hash == expected_hash:
-            dest.parent.mkdir(exist_ok=True, parents=True)
-            dest.write_bytes(result)
-        else:
-            warnings.warn(f"Hash mismatch getting: {dlurl}\n{downloaded_hash=}\n{expected_hash=}\nof {self.persistent_id}")
+            raise RuntimeError(f"Couldn't get: {dlurl}\nof {self.persistent_id}") from exc
+        downloaded_hash = hasher.hexdigest()
+        if downloaded_hash != expected_hash:
+            raise RuntimeError(f"Hash mismatch getting: {dlurl}\nof {self.persistent_id}\n{downloaded_hash=}\n{expected_hash=}")

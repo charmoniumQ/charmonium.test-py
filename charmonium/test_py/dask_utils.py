@@ -4,8 +4,6 @@ from typing_extensions import ParamSpec
 import functools
 import subprocess
 
-import charmonium.cache
-
 from . import config
 from .util import create_temp_dir
 
@@ -38,17 +36,10 @@ class DirObjStore(charmonium.cache.DirObjStore):
             self.path.mkdir(parents=True)
 
 
-group = charmonium.cache.MemoizedGroup(
-    size=config.cache_size,
-    obj_store=DirObjStore(path=config.data_path() / "cache"),
-    fine_grain_persistence=True,
-)
-
-
 def load_or_compute_remotely(func: Callable[Params, Return]) -> Callable[Params, Return]:
-    memoized_func = charmonium.cache.Memoized(func=func, group=group)
+    memoized_func = charmonium.cache.Memoized(func=func, group=config.memoized_group)
     def outer_func(*args: Params.args, **kwargs: Params.kwargs) -> Return:
-        if memoized_func.would_hit(*args, **kwargs):
+        if False and memoized_func.would_hit(*args, **kwargs):
             return memoized_func(*args, **kwargs)
         else:
             delayed_result = delayed(memoized_func)(*args, **kwargs)

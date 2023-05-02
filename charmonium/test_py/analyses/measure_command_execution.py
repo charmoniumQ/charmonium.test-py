@@ -4,12 +4,13 @@ import os
 import pathlib
 import shlex
 import subprocess
+import time
 import warnings
 import textwrap
 from typing import Iterable, Mapping
 
 import psutil
-
+import requests
 
 from ..util import create_temp_dir
 from ..config import docker_client
@@ -153,13 +154,13 @@ def measure_docker_execution(
         kill_after: datetime.timedelta = datetime.timedelta(seconds=120),
 ) -> CompletedContainer:
     with create_temp_dir() as temp_dir:
-        resource_file = temp_dir / "resources"
+        resource_file = temp_dir / "resources.txt"
         stdout_file = temp_dir / "stdout"
         stderr_file = temp_dir / "stderr"
         # stdout_file.touch()
         # stderr_file.touch()
         real_command = (
-            "-i",
+            #"sh",
             "-c",
             # shlex.join would mess up the \ and > symbols.
             " ".join([
@@ -168,7 +169,8 @@ def measure_docker_execution(
                 f"--output={shlex.quote(str(resource_file))}",
                 "--format='%M %S %U %e %x'",
                 "timeout",
-                f"--kill-after={kill_after.total_seconds():.0f}",
+                "-k",
+                f"{kill_after.total_seconds():.0f}",
                 f"{wall_time_limit.total_seconds():.0f}",
                 *map(shlex.quote, command),
                 f">{shlex.quote(str(stdout_file))}",
@@ -186,8 +188,8 @@ def measure_docker_execution(
                 for host_dir, container_dir in readonly_mounts
             },
             **{
-                str(mount): {"bind": str(mount), "mode": "ro"}
-                for mount in readonly_binds
+                str(mount): {"bind": str(mount), "mode": "rw"}
+                for mount in readwrite_binds
             },
             **{
                 str(host_dir): {"bind": str(container_dir), "mode": "rw"}
@@ -203,16 +205,15 @@ def measure_docker_execution(
             detach=True,
             nano_cpus=int(cpus * 1e9),
             volumes=volumes,
-            entrypoint="/bin/bash",
         )
         start = datetime.datetime.now()
-        try:
-            container.wait()
-        finally:
+        while True:
             try:
-                container.stop()
-            finally:
-                container.remove(force=True)
+                container.wait(timeout=1)
+                break
+            except requests.exceptions.ReadTimeout:
+                pass
+        container.remove(force=True)
         time_output = (
             resource_file.read_text().strip().split("\n")
             if resource_file.exists()
@@ -237,7 +238,6 @@ def measure_docker_execution(
             shlex.join([
                 "docker",
                 "run",
-                "--entrypoint=/bin/bash",
                 f"--privileged={privileged!s}",
                 f"--memory={mem_limit}b",
                 f"--cpus={cpus:0.2f}",

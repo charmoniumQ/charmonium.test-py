@@ -2,14 +2,21 @@ import tempfile
 import contextlib
 import itertools
 import datetime
+import docker  # type: ignore
 import os
 import random
 import pathlib
 import string
 import shutil
+import shlex
+import urllib.parse
 import subprocess
 import xml.etree.ElementTree
 from typing import Generator, Iterable, TypeVar, Any, Mapping, TYPE_CHECKING
+
+
+def fs_escape(string: str) -> str:
+    return urllib.parse.quote(string.replace(" ", "-").replace("_", "-"), safe="")
 
 
 def random_str(
@@ -124,6 +131,31 @@ def xml_to_tuple(elem: xml.etree.ElementTree.Element) -> tuple[str, Mapping[str,
         (text + tail if text + tail else None),
         (children if children else ()),
     )
+
+
+def chown(path: pathlib.Path) -> None:
+    image = "busybox"
+    command = (
+        "chown",
+        f"{os.getuid()}:{os.getgid()}",
+        "-R",
+        "/work",
+    )
+    container = docker.from_env().containers.run(
+        image=image,
+        command=command,
+        volumes={
+            str(path): {
+                "bind": "/work",
+                "mode": "rw",
+            },
+        },
+        detach=True,
+    )
+    result = container.wait()
+    if result["StatusCode"] != 0:
+        raise RuntimeError(f"`docker run {shlex.join(command)}` failed with {result['StatusCode']}. See `docker logs {container.id}`")
+    container.remove(force=True)
 
 
 if TYPE_CHECKING:

@@ -1,12 +1,51 @@
 #! /usr/bin/env bash
 
-set -e -o nounset
+set -e -o nounset -x
 
 cd $(dirname $(dirname $0))
 
-echo "## Deploy cloud infrastructure"
+node_count=$(terraform -chdir=terraform output --raw worker_count)
+hosts=(manager $(seq 0 $((node_count - 1)) | xargs --replace=R echo worker-R))
 
-#terraform -chdir=terraform apply -auto-approve
+echo "## Test connectivity"
+
+failures=0
+for host in "${hosts[@]}"; do
+	if ! ssh -F terraform/ssh_config "${host}" -o ConnectTimeout=3 sudo rm -rf work; then
+		failures=1
+	fi
+done
+
+if [ "${failures}" == 1 ]; then
+	echo "## Deploy cloud infrastructure"
+
+	terraform -chdir=terraform apply -auto-approve
+	for host in "${hosts[@]}"; do
+		# These may be new nodes, so they may have new SSH key signatures
+		ssh-keygen -R "${host}"
+		ssh -F terraform/ssh_config "${host}" sudo rm -rf work
+	done
+fi
+
+echo "## Rsync local -> remote"
+
+for host in "${hosts[@]}"; do
+	(rsync \
+		--exclude terraform \
+		--exclude build \
+		--exclude .direnv \
+		--exclude .git \
+		--exclude .cache \
+		--exclude .cache2 \
+		--exclude .mypy_cache \
+		--archive \
+		--compress \
+		--rsh='ssh -F ./terraform/ssh_config' \
+		./ \
+		"${host}:work/" \
+	|| echo "${host}: failed to rsync") &
+done
+wait
 
 echo "## Launch Dask manager"
 
@@ -26,7 +65,6 @@ acr_name=wfregtest
 
 ssh \
 	-T \
-	-o StrictHostKeyChecking=no \
 	-F terraform/ssh_config \
 	manager \
 	"if docker ps --all | grep dask-scheduler > /dev/null; then
@@ -56,8 +94,8 @@ ssh \
 
 echo "## Launch Dask workers"
 
-node_count=$(terraform -chdir=terraform output --raw worker_count)
-workers_per_node=4
+workers_per_node=1
+#workers_per_node=4
 first_worker_port=9000
 last_worker_port=$((first_worker_port + workers_per_node))
 first_dashboard_port=9200
@@ -74,7 +112,6 @@ for host in $(seq 0 $((node_count - 1)) | xargs -I% echo 'worker-%'); do
 	(ssh \
 		-T \
 		-F terraform/ssh_config \
-		-o StrictHostKeyChecking=no \
 		"${host}" \
 		"if docker ps --all | grep dask-worker > /dev/null; then
 			docker stop dask-worker > /dev/null
@@ -113,10 +150,43 @@ for host in $(seq 0 $((node_count - 1)) | xargs -I% echo 'worker-%'); do
 done
 wait
 
-echo "## Done"
+# echo "## Done"
+# 
+# echo "Run this command to connect to the dashboard on http://localhost:${dashboard_port}"
+# echo '    ' ssh \
+# 	-F terraform/ssh_config \
+# 	-L "${dashboard_port}:localhost:${dashboard_port}" \
+# 	manager
 
-echo "Run this command to connect to the dashboard on http://localhost:${dashboard_port}"
-echo '    ' ssh \
-	-F terraform/ssh_config \
+echo "## The main event"
+
+echo "http://localhost:${dashboard_port} for Dask dashboard"
+
+cmd="python -m charmonium.test_py.main"
+if [ "${#}" -eq 1 ] && [ -n "${1}" ]; then
+	cmd="${1}"
+	echo "Running: ${cmd}"
+fi
+
+docker_cmd=$(echo docker run \
+    --rm \
+    --interactive \
+    --tty \
+    --volume /home/azureuser/work/:/work \
+    --workdir /work \
+    --env PYTHONPATH=/work \
+    --net=host \
+    --volume /var/run/docker.sock:/var/run/docker.sock \
+    --volume /var/lib/docker:/var/lib/docker \
+    --volume /home/azureuser/.docker:/.docker \
+    --volume /my-tmp:/my-tmp \
+    ${main_image} \
+        ${cmd}
+)
+
+ssh \
+	-F ./terraform/ssh_config \
 	-L "${dashboard_port}:localhost:${dashboard_port}" \
-	manager
+	-t \
+	manager \
+		"tmux new-session -A -s run -d bash ; tmux send-keys '${docker_cmd}' C-m ; tmux attach-session"

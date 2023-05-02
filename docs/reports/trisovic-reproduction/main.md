@@ -115,7 +115,8 @@ Internal discrepancies (ID) include:
 >>> url_prefix = "https://raw.githubusercontent.com/atrisovic/dataverse-r-study/master"
 >>> all_dois = requests.get(f"{url_prefix}/get-dois/dataset_dois.txt").text.strip().split("\n")
 >>> def get_dois(data_file):
-...     reader = csv.reader(requests.get(f"{url_prefix}/analysis/data/{data_file}").text.split("\n"), delimiter="\t")
+...     request = requests.get(f"{url_prefix}/analysis/data/{data_file}")
+...     reader = csv.reader(request.text.split("\n"), delimiter="\t")
 ...     return set(row[0] for row in reader if len(row) > 1)
 >>> dois32 = get_dois("run_log_r32_env_download.csv")
 >>> dois36 = get_dois("run_log_r36_env_download.csv")
@@ -130,7 +131,7 @@ Internal discrepancies (ID) include:
   The scripts that fail 5.1 will be rerun in 5.3.1 with the wrong version of R.
 
 [^r-version-mismatch]:
-```
+```bash
 $ docker run --rm -it --entrypoint bash atrisovic/aws-image-r32 -c 'cat ~/.bashrc' | grep 'conda activate r_'
 conda activate r_3.2.1
 
@@ -143,7 +144,7 @@ $ docker run --rm -it --entrypoint bash atrisovic/aws-image-r32 -c 'cat execute_
   However, Diffoscope[@glukhova_tools_2017] shows that the images have slightly different versions of the runner script and other important files (try running this[^different-scripts]).
 
 [^different-scripts]:
-```
+```bash
 $ docker pull atrisovic/aws-image-r32
 $ docker save --output aws-image-r32.tar atrisovic/aws-image-r32
 $ docker pull atrisovic/aws-image-r40

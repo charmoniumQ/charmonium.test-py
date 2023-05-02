@@ -78,7 +78,8 @@ variable "vm_setup_script" {
     # Silence MOTD
     "touch ~/.hushlogin",
     "sudo apt-get update",
-    "sudo apt-get install --yes docker.io python3-pip rsync",
+    "sudo apt-get install --yes python3-pip rsync tmux ncurses-term",
+	"curl -sSL https://get.docker.com/ | sudo sh",
     "sudo usermod -aG docker $USER",
     "pip install --no-warn-script-location --user azure-cli",
   ]

@@ -19,7 +19,10 @@
   outputs = { self, nixpkgs, flake-utils, poetry2nix }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        # https://discourse.nixos.org/t/using-non-free-libraries-in-flakes/8632/18
+        pkgs = import nixpkgs {
+          inherit system;
+        };
         p2n = poetry2nix.legacyPackages.${system};
         pyproject = builtins.fromTOML(builtins.readFile(./pyproject.toml));
         name = builtins.replaceStrings ["." "_"] ["-" "-"] pyproject.tool.poetry.name;
@@ -29,6 +32,7 @@
           pkgs.terraform
           pkgs.azure-cli
           pkgs.jq
+          #pkgs.diffoscope
         ];
         nix-site-dependencies = [
           pkgs.hwloc
@@ -42,7 +46,9 @@
             url = "https://github.com/NixOS/nixpkgs/";
             ref = "refs/heads/nixpkgs-unstable";
             rev = nixpkgsGitHash;
-          }) {};
+          }) {
+            inherit system;
+          };
         # See https://github.com/nix-community/poetry2nix/blob/master/overrides/build-systems.json
         # and https://github.com/nix-community/poetry2nix/blob/master/docs/edgecases.md
         pypkgs-build-requirements = {
@@ -69,6 +75,7 @@
           attrs = [ "hatchling" "hatch-fancy-pypi-readme" "hatch-vcs" ];
           dask = [ "versioneer" ];
           distributed = [ "versioneer" ];
+          types-aiofiles = [ "setuptools" ];
         };
         p2n-overrides' = p2n.defaultPoetryOverrides.extend (self: super:
           builtins.mapAttrs (package: build-requirements:
@@ -202,13 +209,28 @@
             ];
           };
 
-          "r-runner" = pkgs.dockerTools.buildLayeredImage {
-            name = "r-runner";
-            tag = "3.2.4";
-            maxLayers = 125;
+          # Read the source of buildLayeredImage for info on how to do stuff:
+          # https://github.com/NixOS/nixpkgs/blob/master/pkgs/build-support/docker/default.nix
+          "r-runner-4_0_4" = pkgs.dockerTools.buildLayeredImage {
+            name = "r-runner-4_0_4";
             contents = [
-              ((oldNixpkgs ((import ./dockerfiles/r-versions.nix)."3.0.3")).R)
+              pkgs.gnumake # Required for install.packages
+              pkgs.time # Required by this project for capturing resource utilization in the container
+              pkgs.busybox # R expects busybox utils
+              pkgs.dockerTools.binSh
+              pkgs.dockerTools.usrBinEnv
+              (pkgs.runCommand "tmp" { } "mkdir -p $out/tmp")
+              (pkgs.runCommand "Rprofile" { } ''
+                mkdir $out
+                echo 'local({r <- getOption("repos"); r["CRAN"] <- "http://cran.us.r-project.org"; options(repos=r)})' > $out/.Rprofile
+              '')
+              ((oldNixpkgs ((import ./dockerfiles/r-versions.nix)."4.0.4")).R)
             ];
+            config = {
+              Entrypoint = [
+                "${pkgs.busybox}/bin/sh"
+              ];
+            };
           };
 
         };
