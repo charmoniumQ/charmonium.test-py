@@ -801,14 +801,14 @@ pycparser = "*"
 
 [[package]]
 name = "charmonium-cache"
-version = "1.4.0"
+version = "1.4.1"
 description = "Provides a decorator for caching a function between subsequent processes."
 category = "main"
 optional = false
 python-versions = ">=3.8,<4.0"
 files = [
-    {file = "charmonium_cache-1.4.0-py3-none-any.whl", hash = "sha256:74428a89ef975278fb0844541767b17a553eb030ddeb823781ad698f7c589728"},
-    {file = "charmonium_cache-1.4.0.tar.gz", hash = "sha256:739946848268c494defc9bbefc2dadf5c8f7a5285f7fc4d6da19da9856976d71"},
+    {file = "charmonium_cache-1.4.1-py3-none-any.whl", hash = "sha256:b8aacfc07b7566950263ed97a6bc5a7ffe2277985f8996bafb30a4211c69feda"},
+    {file = "charmonium_cache-1.4.1.tar.gz", hash = "sha256:f299b7a488877af2622fc261bf54a6e8807532e017b892b7b00b21c328ec214c"},
 ]
 
 [package.dependencies]
@@ -3872,4 +3872,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "a8af8bc6f15438ed84915994dc3fb4e46280eec78a9a263f4a2c305df2ee9cb1"
+content-hash = "2c0e6831711b4a36fa75e6e13c372ff6fbb4518950c10641fc87a4a7c88d93cb"

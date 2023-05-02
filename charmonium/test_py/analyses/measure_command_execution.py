@@ -207,12 +207,13 @@ def measure_docker_execution(
             volumes=volumes,
         )
         start = datetime.datetime.now()
-        while True:
-            try:
-                container.wait(timeout=1)
-                break
-            except requests.exceptions.ReadTimeout:
-                pass
+        container.wait()
+        # while True:
+        #     try:
+        #         container.wait(timeout=1)
+        #         break
+        #     except requests.exceptions.ReadTimeout:
+        #         pass
         container.remove(force=True)
         time_output = (
             resource_file.read_text().strip().split("\n")

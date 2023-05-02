@@ -22,6 +22,7 @@ class RLangExecutor(WorkflowExecutor):
             "set +e -x",
             # This one gets echoed into stderr
             "set +e -x",
+            f"touch {out_dir}/index",
         ]
         for r_file in r_files:
             r_file = r_file.relative_to(code_dir)
@@ -37,6 +38,6 @@ class RLangExecutor(WorkflowExecutor):
         script_path.write_text("\n".join(lines))
         script_path.chmod(0o755)
         return (
-            "wfregtest.azurecr.io/r-runner-4_0_4:commit-c9899448-1682966224",
+            "wfregtest.azurecr.io/r-runner-4_0_4:commit-4d67da81-1683004887",
             (str(script_path),),
         )

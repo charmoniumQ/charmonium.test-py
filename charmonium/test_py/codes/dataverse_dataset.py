@@ -100,4 +100,8 @@ class DataverseDataset(Code):
             raise RuntimeError(f"Couldn't get: {dlurl}\nof {self.persistent_id}") from exc
         downloaded_hash = hasher.hexdigest()
         if downloaded_hash != expected_hash:
-            raise RuntimeError(f"Hash mismatch getting: {dlurl}\nof {self.persistent_id}\n{downloaded_hash=}\n{expected_hash=}")
+            raise HashMismatchError(f"Hash mismatch getting: {dlurl}\nof {self.persistent_id}\n{downloaded_hash=}\n{expected_hash=}")
+
+
+class HashMismatchError(Exception):
+    pass

@@ -60,7 +60,7 @@ if __name__ == "__main__":
         registries=(DataverseTrisovicFixed(),),
         conditions=(Condition(),),
         analyses=(ExecuteWorkflow(),),
-        first_n=20,
+        first_n=4000,
     )
 
     print("Config loaded")
@@ -94,49 +94,51 @@ if __name__ == "__main__":
             if result.proc.exit_code == 0:
                 results_file = result.outputs.files.get(pathlib.Path("index"), None)
                 if results_file is not None and (contents := results_file.contents) is not None:
-                    for line in contents.decode().strip().split("\n"):
+                    for line in filter(bool, contents.decode().strip().split("\n")):
                         results_str, _space, r_file = line.partition(" ")
                         results_path = pathlib.Path(results_str)
                         expected_files = {results_path / "status", results_path / "stdout", results_path / "stderr"}
                         missing_files = expected_files - result.outputs.files.keys()
                         if missing_files:
-                            print(f"{name},mising files,{missing_files}")
+                            print(f"{name} mising files {missing_files}")
                             for path, file in {**result.outputs.files, **result.logs.files}.items():
-                                print(str(path), file.size)
-                                print(expect_type(bytes, file.contents).decode())
+                                print(f"  {path} {file.size=}")
+                                print(textwrap.indent(expect_type(bytes, file.contents).decode(), prefix=" " * 4))
                                 print()
-                            print("stdout:\n", result.proc.stdout_b.decode(), "\n")
-                            print("stderr:\n", result.proc.stderr_b.decode(), "\n")
+                            print("  stdout:", textwrap.indent(result.proc.stdout_b.decode(), prefix=" " * 4), sep="\n")
+                            print("  stderr:", textwrap.indent(result.proc.stderr_b.decode(), prefix=" " * 4), sep="\n")
                             print()
-                        status = 0 == int(expect_type(bytes, result.outputs.files[results_path / "status"].contents).decode())
-                        if not status:
-                            # print(f"{name},script failed,{r_file}")
-                            # print(expect_type(bytes, result.outputs.files[results_path / "stderr"].contents).decode())
-                            # print(expect_type(bytes, result.outputs.files[results_path / "stdout"].contents).decode())
-                            # print()
-                            pass
                         else:
-                            # print("success")
-                            pass
+                            status = 0 == int(expect_type(bytes, result.outputs.files[results_path / "status"].contents).decode())
+                            if not status:
+                                # print(f"{name},script failed,{r_file}")
+                                # print(expect_type(bytes, result.outputs.files[results_path / "stderr"].contents).decode())
+                                # print(expect_type(bytes, result.outputs.files[results_path / "stdout"].contents).decode())
+                                # print()
+                                pass
+                            else:
+                                # print("success")
+                                pass
                 else:
-                    print(f"{name},no result index")
+                    print(f"{name} no result index")
                     for path, file in {**result.outputs.files, **result.logs.files}.items():
-                        print(str(path), file.size)
-                        print(expect_type(bytes, file.contents).decode())
+                        print(f"  {path} {file.size=}")
+                        print(textwrap.indent(expect_type(bytes, file.contents).decode(), prefix=" " * 4))
                         print()
-                    print("stdout:\n", result.proc.stdout_b.decode(), "\n")
-                    print("stderr:\n", result.proc.stderr_b.decode(), "\n")
+                    print("  stdout:", textwrap.indent(result.proc.stdout_b.decode(), prefix=" " * 4), sep="\n")
+                    print("  stderr:", textwrap.indent(result.proc.stderr_b.decode(), prefix=" " * 4), sep="\n")
                     print()
             else:
-                print(f"{name},docker command failed")
+                print(f"{name} docker command failed")
                 # print(result.proc.docker_command)
                 # print(result.proc.stdout_b.decode())
                 # print(result.proc.stderr_b.decode())
                 print()
+        elif isinstance(result, HashMismatchError):
+            print(f"{name} hash_mismatch {result.msg}")
         elif isinstance(result, Exception):
-            print(f"{name},exception,{result.__class__.__name__}")
-            # traceback.print_exception(result)
-            # traceback.print_tb(result.__traceback__)
-            # print()
+            print(f"{name} exception {result.__class__.__name__}")
+            # print(textwrap.indent(traceback.format_exception(result), prefix=" " * 4))
+            print()
         else:
             raise TypeError()

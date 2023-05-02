@@ -93,7 +93,7 @@ python = "^3.8"
 # make sure to keep the Python versions here consistent with those tested by Tox (tool.tox.legacy_tox_ini.tox.envlist).
 tqdm = "^4.64.1"
 dask = "^2023.3.2"
-charmonium-cache = "^1.4"
+charmonium-cache = "^1.4.1"
 docker = "^6.0.1"
 xxhash = "^3.2.0"
 charmonium-time-block = "^0.3.2"

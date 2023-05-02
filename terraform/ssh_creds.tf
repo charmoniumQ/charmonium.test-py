@@ -47,6 +47,7 @@ resource "local_file" "ssh_config" {
         IdentityFile ./terraform/developer_private_key
         User azureuser
         ProxyJump manager
+        CheckHostIP no
 
     %{ endfor }
   EOT

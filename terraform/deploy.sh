@@ -11,7 +11,7 @@ echo "## Test connectivity"
 
 failures=0
 for host in "${hosts[@]}"; do
-	if ! ssh -F terraform/ssh_config "${host}" -o ConnectTimeout=3 sudo rm -rf work; then
+	if ! ssh -F terraform/ssh_config -o ConnectTimeout=3 "${host}" sudo rm -rf work; then
 		failures=1
 	fi
 done
@@ -94,8 +94,8 @@ ssh \
 
 echo "## Launch Dask workers"
 
-workers_per_node=1
-#workers_per_node=4
+#workers_per_node=1
+workers_per_node=2
 first_worker_port=9000
 last_worker_port=$((first_worker_port + workers_per_node))
 first_dashboard_port=9200
