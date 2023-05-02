@@ -107,6 +107,7 @@ Internal discrepancies (ID) include:
   The choice of datasets-to-test is a controlled variable and should held constant when changing experimental conditions.
   One possible reason for the change is that the runner script can silently crash, and if it does, it will not output results for files after that point.
   There is no way to tell from the released data if the runner script crashed.
+  Changes in the script between versions (see **ID3**) cause these omissions to be inconsistent between versions.
 
 [^different-set-of-dois]:
 ```python
@@ -124,7 +125,7 @@ Internal discrepancies (ID) include:
 282
 ```
 
-* **ID2:** The runner has two ways of running an R file, 5.1 (see the [Dockerfile](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/Dockerfile#L24)) and 5.3.1 (see [execute_files.py](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/execute_files.py#L5)) in the above pseudocode.
+* **ID2:** The runner has two ways of running an R file, 5.1 (see the original work's [Dockerfile](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/Dockerfile#L24)) and 5.3.1 (see the original work's [execute_files.py](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/execute_files.py#L5)) in the above pseudocode.
   The images uploaded to Dockerhub change the version of R for step 5.1 but not 5.3.1 (try running this[^r-version-mismatch]).
   The scripts that fail 5.1 will be rerun in 5.3.1 with the wrong version of R.
 
@@ -151,7 +152,7 @@ $ docker run --rm -t -w $PWD -v $PWD:$PWD:ro registry.salsa.debian.org/reproduci
 shows different versions of usr/workdir/exec_r_files.R and other important files
 ```
 
-* **ID4:** The R 3.2 and 3.6 environments install `r` while the R 4.0 environment installs `r-base` (see [Dockerfile](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/Dockerfile#L18)).
+* **ID4:** The R 3.2 and 3.6 environments request `r` while the R 4.0 environment requests `r-base` (see the original work's [Dockerfile](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/Dockerfile#L18)).
   `r` depends on `r-base` and `r-recommended`.
   Therefore, the 3.2 and 3.6 environment will have packages that the 4.0 environment does not have.
   Some scripts may succeed in R 3.6 and fail in R 4.0, not because of the R version, but because the difference in installed packages.
@@ -159,7 +160,7 @@ shows different versions of usr/workdir/exec_r_files.R and other important files
 Non-reproducible (NR) aspects include:
 
 * **NR1:** Datasets in Dataverse can upload a new version, which will get the same DOI (e.g., [this dataset](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/U3QJQZ&version=2.0));
-  The code uses the latest version of the dataset in Dataverse (e.g., [download_dataset.py](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/download_dataset.py#L13)).
+  The code uses the latest version of the dataset in Dataverse (see the original work's [download_dataset.py](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/download_dataset.py#L13)).
   Re-executing the code will be analyzing different experiments.
   There is no record of which version the original work used, but one could filter for versions released prior to the approximate date of the experiment.
 
@@ -170,14 +171,14 @@ Non-reproducible (NR) aspects include:
   Note that `--allow-releaseinfo-change` bypasses this check.
   
   Using the Docker images uploaded to Dockerhub instead of rebuilding them would bypass this issue, but it raises its own issue:
-  There are four images in Dockerhub that follow the naming convention, (`aws-image-r40`, `aws-image-r32`, `aws-image-r36-m`, and `aws-image`), but six experimental conditions (3 versions of R, with or without code cleaning).
+  There are four images in Dockerhub that follow the naming convention (see the original works's [Dockerhub](https://hub.docker.com/u/atrisovic): `aws-image-r40`, `aws-image-r32`, `aws-image-r36-m`, and `aws-image`), but six experimental conditions (three versions of R, with or without code cleaning).
   Since the R version and code cleaning is baked in to the Docker image, these should require different images.
 
 * **NR3:** The main script, which is run after the Docker image is built, calls `install.packages(...)`, which installs the latest version of a package at the time of its execution.
   This results in a different software environment in the replication than that in the original work.
   In particular, one line of the runner script, `install.packages(reticulate)`, fails when we attempted it.
 
-* **NR3:** Conda may have hosted R 3.2.1 at some point, but it currently does not (see the [Conda R repository](https://anaconda.org/r/r/files) and [Conda Forge repository](https://anaconda.org/conda-forge/r/files)).
+* **NR4:** Conda may have hosted R 3.2.1 at some point, but it currently does not (see the [Conda R repository](https://anaconda.org/r/r/files) and [Conda Forge repository](https://anaconda.org/conda-forge/r/files)).
   Therefore, the R environment used by the original work cannot be built.
 
 Hoping to avoid these issues, we decided to do a reproduction instead of a replication.

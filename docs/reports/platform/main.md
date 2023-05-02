@@ -13,13 +13,14 @@ _Lay out the other sections._
 
 ## Prior work
 
-| Language | Registry | First Author | DOI |
+| Language/Framework | Registry | First Author | DOI |
 |------------|-----|------|---------|
 | R | Dataverse | Trisovic | 10.1038/s41597-022-01143-6|
 | Python/Jupyter Notebook | GitHub | Murta | 10.1109/MSR.2019.00077 |
 | Python/Jupyter Notebook | GitHub | Kuo | 10.1145/3324884.3416585 |
 | Python/Pytest | GitHub | Gruber | 10.1109/ICST49551.2021.00026 |
 | Taverna | myExperiment | Zhao | 10.1109/eScience.2012.6404482 |
+| Dockerfile | GitHub | Henkel | 10.1109/ICSE43902.2021.00106 |
 | Any | Any | Grayson | This work |
 
 (Dan: There's a lot of work on computational reproducibility in general, most of which may or may not be relevant depending on what the defintion of "computational experiments" is, such as [Guix](https://guix.gnu.org), tools that are part of https://www.repronim.org, stuff from Tanu Malik like SciUnit (https://cdmdicewebprd01.dpu.depaul.edu/projects/advancedcontainers/), ... )
