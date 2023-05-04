@@ -89,12 +89,12 @@ html-math-method:
 _Note that this manuscript reads properly on printed media, but the embedded hyperlinks provide references to internet resources for an interested reader._
 
 Reproducibility is essential for scientists to scrutinize each other's results and to build form prior work.
-With the advent of computational experiments in science, it is natural to ask how much of those computational experiments are reproducible.
+With the advent of computational experiments in science, it is natural to ask what fraction of those computational experiments are reproducible.
 
 Authors set out to answer this question for specific communities in the past [@pimentel_large-scale_2019, @wang_assessing_2021, @collberg_repeatability_2016, @stodden_empirical_2018, @zhao_why_2012, @trisovic_large-scale_2022].
 Of these, Collberg et al. [@collberg_repeatability_2016], Stodden et al. [@stodden_empirical_2018], Zhao et al. [@zhao_why_2012], and Trisovic et al. [@trisovic_large-scale_2022] are especially interesting because they study codes used in basic research.
-Of these, Zhao et al. [@zhao_why_2012] and Trisovic et al. [@trisovic_large-scale_2022] are automatic re-execution studies of codes found in repositories with the explicit purpose of encouraging reproducibility for scientific codes.
-Zhao et al. study the defunct myExperiment repository while Trisovic et al. studies Harvard Dataverse.
+Of these, Zhao et al. [@zhao_why_2012] and Trisovic et al. [@trisovic_large-scale_2022] are automatic re-execution studies of codes found in repositories that have the explicit purpose of encouraging reproducibility for scientific codes.
+Zhao et al. studied the defunct myExperiment repository while Trisovic et al. studied Harvard Dataverse.
 As such, we sought to reproduce Trisovic et al.
 Not only will reproduction validate the data, but also future research on automatic code cleaning of R scripts could begin by modifying Trisovic et al.'s original experiments.
 
@@ -111,7 +111,7 @@ In Section 5, we discuss the significance of the results.
 In this section, we describe Dataverse, the methodology of the original work, and the results of it.
 
 _Dataverse_ is a "software platform for sharing, finding, citing, and preserving research data" [@dataverse_community_developers_dataverse_2023], and _Harvard Dataverse_ is a large instance of Dataverse.
-Scientists can upload the code or data used in a publication, and this bundle is called a _dataset_ in Dataverse.
+Scientists can upload the code or data used in a publication, where this bundle is called a _dataset_ in Dataverse.
 Datasets can be modified, where each modification gets a new two-number version code (e.g., "1.0").
 Each dataset gets a DOI, which points to the latest version of that dataset.
 
@@ -147,8 +147,8 @@ The container, given a Dataset ID, invokes a runner script which does the follow
    4. Write results to a log file
 6. Upload log files to a database.
 
-I will omit the first three and last two research questions from the original work, due to time constraints.
-We prioritized research questions realting directly to reproducibility rates.
+Here we examine the last five (of eight) research questions from the original work.
+We prioritized these research questions as they relate directly to reproducibility rates.
 
 * **RQ4**: What is the code re-execution rate?
   * The original work gives the following table:
@@ -188,10 +188,10 @@ We prioritized research questions realting directly to reproducibility rates.
 
 ## Methodology
 
-In this section, we describe the problems with the prior work's methodology, and present our own methodology.
+In this section, we describe the problems we have observed with the prior work's methodology, and present our own methodology.
 
 First, we attempted a replication of the original work.
-However, the original work had some internal discrepancies and non-reproducible aspects.
+However, we found that the original work had some internal discrepancies and some non-reproducible aspects.
 
 Internal discrepancies (ID) include:
 
@@ -230,14 +230,14 @@ Non-replicable (NR) aspects include:
 * **NR3:** Conda may have hosted R 3.2.1 at some point, but it currently does not (see the [Conda R repository](https://anaconda.org/r/r/files) and [Conda Forge repository](https://anaconda.org/conda-forge/r/files)).
   Therefore, the R environment used by the original work cannot be built.
 
-Hoping to avoid these issues, we decided to do a reproduction instead of a replication.
+To try to avoid these issues, we decided to do a reproduction instead of a replication.
 
 * We run all of the DOIs under every version of R, avoiding **ID1**. We run all scripts in the dataset even if one fails.
-* The original work used the R command, `source(r_file)`, and fell-back on the shell command, `Rscript r_file`, when that failed. TODO: why? We only use `Rscript r_file`. Furthermore, the container for R 4.0 does not contain R 3.6 at all, so there is no chance of confusing versions of R in that container, avoiding **ID2**.
+* The original work used the R command, `source(r_file)`, and fell back on the shell command `Rscript r_file` when that failed. TODO: why? We only use `Rscript r_file`. Furthermore, the container for R 4.0 does not contain R 3.6 at all, so there is no chance of confusing versions of R in that container, avoiding **ID2**.
 * We re-executed the code without changing it for all experimental conditions avoiding **ID3** and **ID4**.
 * Our project logs the version of the code that it uses, avoiding **NR1**.
 * Our containers are built using the Nix package manager, which pins the exact version of every dependency used, avoiding **NR2**.
-* Nix can archive all of the soruces it pulls from into a replication package, which avoids **NR3**.
+* Nix can archive all of the sources it pulls from into a replication package, which avoids **NR3**.
 
 The original work uses AWS Batch and AWS DynamoDB, which makes replication more difficult on other platforms.
 For this work, we used Dask [@rocklin_dask_2015] to interface to our Azure VMs, and filesystem_spec [@fsspec_authors_filesystem_spec_2023] to interface with Azure storage buckets.
@@ -256,7 +256,7 @@ The original work also excluded these.
 [^dataverse-wrong-hash]: [Issue #9501 on dataverse GitHub](https://github.com/IQSS/dataverse/issues/9501)
 [^harvard-dataverse-wrong-hash]: [Issue #37 on dataverse.harvard.edu GitHub](https://github.com/IQSS/dataverse.harvard.edu/issues/37)
 
-We augmented the unlabeled table on Page 4 to contain our results:
+We augmented the unlabeled table on Page 4 with our results:
 
 ```
 |                | Without code cleaning     |
@@ -272,7 +272,7 @@ We augmented the unlabeled table on Page 4 to contain our results:
 ```
 
 The biggest difference is that there are many fewer timed-out scripts.
-The original work applies a time-limit to 
+The original work applies a time-limit to [DSK: what?]
 Like the original work, we use a one-hour timeout on the whole dataset.
 We also apply a per-script dataset, which woud get _more_ timeouts than the original.
 
@@ -290,7 +290,7 @@ We also excluded the cases where we observed failures with different exception t
 
 -->
 
-We also exclude datasets selected by the original work which do not contain any R scripts.
+We also exclude datasets selected by the original work that do not contain any R scripts.
 They may have contained R scripts at the time that the experiments in the original work were executed.
 
 Data analysis differences:
