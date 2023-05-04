@@ -1,3 +1,5 @@
+import datetime
+import shlex
 import pathlib
 
 from ...util import fs_escape
@@ -24,20 +26,21 @@ class RLangExecutor(WorkflowExecutor):
             "set +e -x",
             f"touch {out_dir}/index",
         ]
+        max_timeout = int(datetime.timedelta(hours=0.5).total_seconds())
         for r_file in r_files:
             r_file = r_file.relative_to(code_dir)
             r_file_result = out_dir / fs_escape(str(r_file))
             lines.extend([
                 f"mkdir -p {r_file_result}",
                 f"cd {code_dir}",
-                f"echo {r_file_result.relative_to(out_dir)} {r_file} >> {out_dir}/index",
-                f"Rscript {r_file} > {r_file_result}/stdout 2> {r_file_result}/stderr",
+                f"echo {r_file_result.relative_to(out_dir)} {shlex.quote(str(r_file))} >> {out_dir}/index",
+                f"timeout -k 30 {max_timeout} Rscript {shlex.quote(str(r_file))} > {r_file_result}/stdout 2> {r_file_result}/stderr",
                 f"echo -e $? > {r_file_result}/status",
                 "",
             ])
         script_path.write_text("\n".join(lines))
         script_path.chmod(0o755)
         return (
-            "wfregtest.azurecr.io/r-runner-4_0_4:commit-4d67da81-1683004887",
+            "wfregtest.azurecr.io/r-runner-4_0_4:commit-2b156c81-1683083922",
             (str(script_path),),
         )

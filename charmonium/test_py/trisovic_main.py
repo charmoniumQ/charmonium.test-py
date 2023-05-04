@@ -19,7 +19,7 @@ from .dask_utils import load_or_compute_remotely, compute
 from . import config
 
 
-@charmonium.cache.memoize(group=config.memoized_group)
+@charmonium.cache.memoize(group=config.memoized_group())
 def get_dois() -> list[str]:
     return requests.get("https://raw.githubusercontent.com/atrisovic/dataverse-r-study/master/get-dois/dataset_dois.txt").text.strip().split("\n")
 
@@ -27,7 +27,8 @@ def get_dois() -> list[str]:
 image = "wfregtest.azurecr.io/trisovic-runner:commit-b7171f61-1681765077"
 
 
-@load_or_compute_remotely
+@dask.delayed
+@charmonium.cache.memoize(group=config.memoized_group())
 def analyze(doi: str) -> tuple[CompletedContainer, FileBundle]:
     with create_temp_dir() as temp_dir:
         proc = measure_docker_execution(
@@ -45,7 +46,7 @@ def analyze(doi: str) -> tuple[CompletedContainer, FileBundle]:
         return proc, result
 
 
-@charmonium.cache.memoize(group=config.memoized_group)
+@charmonium.cache.memoize(group=config.memoized_group())
 def get_trisovic_results(r_version: str, env_clean: bool) -> Mapping[str, Mapping[str, str]]:
     # run_log_r40_no_env.csv
     url = f"https://raw.githubusercontent.com/atrisovic/dataverse-r-study/master/analysis/data/run_log_r{r_version.replace('.', '')}_{'no' if not env_clean else ''}_env.csv"
@@ -61,11 +62,11 @@ def get_trisovic_results(r_version: str, env_clean: bool) -> Mapping[str, Mappin
     return results
 
 
-@charmonium.cache.memoize(group=config.memoized_group)
+@charmonium.cache.memoize(group=config.memoized_group())
 def get_my_results(first_n: int) -> list[tuple[CompletedContainer, FileBundle]]:
     return cast(
         list[tuple[CompletedContainer, FileBundle]],
-        globals()["dask"].compute(*(
+        dask.compute(*(
             globals()["analyze"](doi)
             for doi in get_dois()[:first_n]
         )),

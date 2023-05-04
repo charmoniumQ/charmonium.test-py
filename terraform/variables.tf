@@ -17,7 +17,7 @@ variable "manager_vm_size" {
 
 variable "workers" {
   type    = number
-  default = 1
+  default = 10
 }
 
 variable "worker_disk_size_gb" {

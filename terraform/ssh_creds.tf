@@ -48,6 +48,7 @@ resource "local_file" "ssh_config" {
         User azureuser
         ProxyJump manager
         CheckHostIP no
+        StrictHostKeyChecking accept-new
 
     %{ endfor }
   EOT

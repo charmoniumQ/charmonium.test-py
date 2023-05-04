@@ -90,12 +90,13 @@ ssh \
 			--host manager \
 			--port ${scheduler_port} \
 			--dashboard \
-			--dashboard-address=:${dashboard_port}"
+			--dashboard-address=:${dashboard_port}" \
+&
 
 echo "## Launch Dask workers"
 
 #workers_per_node=1
-workers_per_node=2
+workers_per_node=4
 first_worker_port=9000
 last_worker_port=$((first_worker_port + workers_per_node))
 first_dashboard_port=9200

@@ -16,6 +16,8 @@ from ..types import Code
 
 # TODO: download a Zip archive of the whole dataset instead of downloading each file individually.
 
+retries = 3
+
 @dataclasses.dataclass(frozen=True)
 class DataverseDataset(Code):
     persistent_id: str
@@ -42,12 +44,19 @@ class DataverseDataset(Code):
     async def acheckout(self, path: pathlib.Path) -> None:
         # See https://github.com/atrisovic/dataverse-r-study/blob/master/docker/download_dataset.py
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                    f"{self.server}/datasets/:persistentId/versions/:latest?persistentId={self.persistent_id}",
-                    # headers={"X-Dataverse-key": harvard_dataverse_token()},
-                    ssl=ssl_context(),
-            ) as response:
-                response_obj = await response.json()
+            for retry in range(retries):
+                try:
+                    async with session.get(
+                            f"{self.server}/datasets/:persistentId/versions/:latest?persistentId={self.persistent_id}",
+                            # headers={"X-Dataverse-key": harvard_dataverse_token()},
+                            ssl=ssl_context(),
+                    ) as response:
+                        response_obj = await response.json()
+                    break
+                except Exception as exc:
+                    exc2 = exc
+            else: # Else means we haven't broken
+                raise exc2
 
             fetches = list[Awaitable[None]]()
             for file in response_obj.get('data', {}).get('files', []):
@@ -83,21 +92,25 @@ class DataverseDataset(Code):
         if time_estimate > 30:
             pass
             # warnings.warn(f"Might take a while: {dlurl} {size=} {time_estimate=} {timeout=}")
-        try:
-            async with session.get(
-                    dlurl,
-                    # headers={"X-Dataverse-key": harvard_dataverse_token()},
-                    timeout=timeout,
-                    ssl=ssl_context(),
-            ) as response:
-                hasher = hashlib.md5()
-                dest.parent.mkdir(exist_ok=True, parents=True)
-                async with aiofiles.open(str(dest), mode="wb") as dest_file:
-                    async for chunk in response.content.iter_chunked(chunk_size):
-                        await dest_file.write(chunk)
-                        hasher.update(chunk)
-        except Exception as exc:
-            raise RuntimeError(f"Couldn't get: {dlurl}\nof {self.persistent_id}") from exc
+        for retry in range(retries):
+            try:
+                async with session.get(
+                        dlurl,
+                        # headers={"X-Dataverse-key": harvard_dataverse_token()},
+                        # timeout=timeout,
+                        ssl=ssl_context(),
+                ) as response:
+                    hasher = hashlib.md5()
+                    dest.parent.mkdir(exist_ok=True, parents=True)
+                    async with aiofiles.open(str(dest), mode="wb") as dest_file:
+                        async for chunk in response.content.iter_chunked(chunk_size):
+                            await dest_file.write(chunk)
+                            hasher.update(chunk)
+                    break
+            except Exception as exc:
+                exc2 = exc
+        else: # Else means we haven't broken
+            raise RuntimeError(f"Couldn't get: {dlurl}\nof {self.persistent_id}") from exc2
         downloaded_hash = hasher.hexdigest()
         if downloaded_hash != expected_hash:
             raise HashMismatchError(f"Hash mismatch getting: {dlurl}\nof {self.persistent_id}\n{downloaded_hash=}\n{expected_hash=}")
