@@ -35,3 +35,17 @@ class Analysis(abc.ABC):
 
 class Result(abc.ABC):
     pass
+
+
+class Reduction(abc.ABC):
+    @abc.abstractmethod
+    def reduce(
+            self,
+            code: Code,
+            condition: Condition,
+            result: Result
+    ) -> ReducedResult: ...
+
+
+class ReducedResult(abc.ABC):
+    pass

@@ -13,6 +13,7 @@ from .file_bundle import FileBundle
 from .measure_command_execution import CompletedContainer, measure_docker_execution
 from .machine import Machine
 from .workflow_executors import executors, WorkflowExecutor
+from ..conditions import WorkflowCondition
 
 
 class ExecuteWorkflow(Analysis):
@@ -23,24 +24,25 @@ class ExecuteWorkflow(Analysis):
         code_path: pathlib.Path
     ) -> Result:
         code = expect_type(WorkflowCode, code)
+        condition = expect_type(WorkflowCondition, condition)
         with create_temp_dir() as tmp_path:
             log_dir = tmp_path / "log"
             out_dir = tmp_path / "out"
             for dir in [log_dir, out_dir]:
                 dir.mkdir()
             executor = executors[code.executor]
-            # TODO: gret these in a more systematic way
-            mem_limit = 1024**3
+            # TODO: get these in a more systematic way
+            mem_limit = 4 * 1024**3
             cpus = 1
-            wall_time_limit = datetime.timedelta(hours=1)
+            wall_time_limit = datetime.timedelta(hours=5)
             image, command = executor.get_container(code_path, out_dir, log_dir, cpus, mem_limit, condition)
             proc = measure_docker_execution(
                 image,
                 command,
-                mem_limit=mem_limit,
+                mem_limit=condition.mem_limit,
                 cpus=cpus,
                 readwrite_binds=(tmp_path, code_path,),
-                wall_time_limit=wall_time_limit,
+                wall_time_limit=condition.wall_time_limit,
             )
             (log_dir / "stdout.txt").write_bytes(proc.stdout_b)
             (log_dir / "stderr.txt").write_bytes(proc.stderr_b)

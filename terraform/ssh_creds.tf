@@ -40,6 +40,7 @@ resource "local_file" "ssh_config" {
         HostName ${azurerm_linux_virtual_machine.manager.public_ip_address}
         IdentityFile ./terraform/developer_private_key
         User azureuser
+        StrictHostKeyChecking accept-new
 
     %{ for worker in azurerm_linux_virtual_machine.worker }
     Host ${worker.name}
@@ -47,7 +48,7 @@ resource "local_file" "ssh_config" {
         IdentityFile ./terraform/developer_private_key
         User azureuser
         ProxyJump manager
-        CheckHostIP no
+        CheckHostIP no # CheckHostIP doesn't work behind an SSH jump host
         StrictHostKeyChecking accept-new
 
     %{ endfor }

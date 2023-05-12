@@ -217,9 +217,12 @@ def memoized_group() -> charmonium.cache.MemoizedGroup:
         ("charmonium.test_py.config", "AzureAsyncCredential"),
         ("charmonium.test_py.config", "AzureSyncCredential"),
         ("aiofiles.base", "AiofilesContextManager"),
+        ("random", "Random"),
+        ("charmonium.test_py.analyses.workflow_executors.r_lang", "RLangExecutor"),
     })
     freeze_config.ignore_objects_by_class.update({
         ("charmonium.time_block.time_block", "TimeBlock"),
+        ("random", "Random"),
     })
     freeze_config.ignore_functions.update({
         ("aiofiles.threadpool", "open"),
@@ -241,9 +244,15 @@ def memoized_group() -> charmonium.cache.MemoizedGroup:
         ("charmonium.test_py.analyses.measure_command_execution", "measure_docker_execution"),
         ("charmonium.test_py.analyses.execute_workflow", "analyze"),
         ("dask.base", "compute"),
+        ("charmonium.test_py.util", "create_temp_dir"),
+        ("charmonium.test_py.analyses.workflow_executors.r_lang", "get_container"),
+
+        # I promise to always seed random before sampling, therefore avoiding the dependenc on global state.
+        # Unfortunately, charmonium.freeze doesn't know that.
+        ("random", "sample"),
     })
     freeze_config.ignore_objects_by_id.update({
-        id(dask.delayed),
+        id(dask.delayed),  # type: ignore
     })
     return charmonium.cache.MemoizedGroup(
         size="200GiB",

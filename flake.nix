@@ -40,7 +40,7 @@
           pkgs.file
         ];
         # see https://lazamar.co.uk/nix-versions/
-        oldNixpkgs = nixpkgsGitHash:
+        getOldNixpkgs = nixpkgsGitHash:
           import (builtins.fetchGit {
             name = "old-nixpkgs";
             url = "https://github.com/NixOS/nixpkgs/";
@@ -153,7 +153,96 @@
           #     preBuild = (old.preBuild or "") + fix-old-azure-packages;
           #   }
           # );
-        });
+          });
+
+        r-versions = {
+          # See https://lazamar.co.uk/nix-versions/?channel=nixpkgs-unstable&package=R
+          "4.2.2" = "8ad5e8132c5dcf977e308e7bf5517cc6cc0bf7d8";
+          "4.0.2" = "5c79b3dda06744a55869cae2cba6873fbbd64394";
+          "3.6.0" =	"bea56ef8ba568d593cd8e8ffd4962c2358732bf4";
+          "3.2.3" = "92487043aef07f620034af9caa566adecd4a252b";
+          "3.2.2" = "42acb5dc55a754ef074cb13e2386886a2a99c483";
+	        "3.2.1" = "b860b106c548e0bcbf5475afe9e47e1d39b1c0e7";
+        };
+
+        # Read the source of buildLayeredImage for info on how to do stuff:
+        # https://github.com/NixOS/nixpkgs/blob/master/pkgs/build-support/docker/default.nix
+        r-runner-image = r-version:
+          let
+            oldNixpkgs = (getOldNixpkgs (builtins.getAttr r-version r-versions));
+          in pkgs.dockerTools.buildLayeredImage {
+            name = "r-runner-${r-version}";
+            contents = [
+              oldNixpkgs.bash
+              oldNixpkgs.time # Required by this project for capturing resource utilization in the container
+              # Use `Rscript -e 'isntall.packages("xml2")'` with various packages to check the following:
+              # The parnetheses show the Debian package popularity rank
+              pkgs.pkg-config # (1801) install.packages needs this to find other dependencies
+              # Note that oldNixpkgs for 3.2.3 does not have pkg-config :(
+              oldNixpkgs.coreutils # (21) R expects utils like ls
+              oldNixpkgs.findutils # (47)some package install scripts use xargs
+              oldNixpkgs.cacert # Needed for HTTPS
+              oldNixpkgs.gnumake # (864) Required for installing packages
+              oldNixpkgs.gnused # (63) Needed for installing packages
+              oldNixpkgs.gnugrep # (67) Needed for isntalling packages
+              oldNixpkgs.diffutils # (34) Needed for isntalling packages
+              oldNixpkgs.gawk # (415) Needed for isntalling packages
+              oldNixpkgs.cmake # 2789
+              oldNixpkgs.zlib
+              oldNixpkgs.zlib.dev # (2132) R httpuv links against libz
+              oldNixpkgs.curl
+              oldNixpkgs.curl.dev # (169) R curl links against libcurl
+              oldNixpkgs.openssl
+              oldNixpkgs.openssl.dev # (2562) R openssl links against libopenssl
+              oldNixpkgs.libxml2
+              oldNixpkgs.libxml2.dev # (3682) R xml2 links against libxml2
+              oldNixpkgs.libpng
+              oldNixpkgs.libpng.dev # (3109)
+              oldNixpkgs.libjpeg
+              oldNixpkgs.libjpeg.dev # 4176
+              #oldNixpkgs.udunits # (8375)
+              (oldNixpkgs.runCommand "setup" { } ''
+                mkdir $out
+                mkdir $out/tmp
+                mkdir -p $out/usr/bin/
+                ln -s ${oldNixpkgs.coreutils}/bin/env $out/usr/bin/envp
+                echo -e 'local({r <- getOption("repos");\n  r["CRAN"] <- "http://cran.us.r-project.org";\n  options(repos=r);\n});\n.libPaths("/r-libs");\noptions(warn=1);\n' > $out/.Rprofile
+                mkdir $out/r-libs
+                echo 'source ${oldNixpkgs.cacert}/nix-support/setup-hook' >> $out/.profile
+                echo 'export PKG_CONFIG_PATH=/lib/pkgconfig' >> $out/.profile
+                mkdir $out/.R
+                echo -e "CFLAGS=-I/include\nLDFLAGS=-L/lib\n" >> $out/.R/Makevars
+              '')
+                #mkdir $out/bin ; ln -s ${oldNixpkgs.bash}/bin/bash $out/bin/sh ; ln -s ${oldNixpkgs.bash}/bin/bash $out/bin/bash
+                #mkdir -p $out/usr/bin ; ln -s ${oldNixpkgs.coreutils}/bin/env $out/usr/bin/env
+              (oldNixpkgs.rWrapper.override {
+                packages = with oldNixpkgs.rPackages; [
+                  # R-recommended according to: https://anaconda.org/r/r-recommended/files
+                  KernSmooth
+                  MASS
+                  Matrix
+                  boot
+                  class
+                  cluster
+                  codetools
+                  foreign
+                  lattice
+                  mgcv
+                  nlme
+                  nnet
+                  rpart
+                  spatial
+                  survival
+                ];
+              })
+            ];
+            maxLayers = 125;
+            config = {
+              Entrypoint = [
+                "/bin/sh" "--login" "-c"
+              ];
+            };
+          };
       in {
         packages = {
           # There are two approaches to make a poetry project work in Nix:
@@ -185,6 +274,7 @@
           };
           "${name}-image" = pkgs.dockerTools.buildLayeredImage {
             name = "${name}";
+            maxLayers = 125;
             contents = [
               # pkgs.dash
               pkgs.busybox
@@ -196,44 +286,15 @@
               })
             ] ++ nix-site-dependencies;
           };
-
-          "jupyter-image" = pkgs.dockerTools.buildLayeredImage {
-            name = "jupyter-image";
-            maxLayers = 127;
-            contents = [
-              (p2n.mkPoetryEnv {
-                projectDir = ./dockerfiles/jupyter;
-                python = default-python;
-                overrides = p2n-overrides;
-              })
-            ];
-          };
-
-          # Read the source of buildLayeredImage for info on how to do stuff:
-          # https://github.com/NixOS/nixpkgs/blob/master/pkgs/build-support/docker/default.nix
-          "r-runner-4_0_4" = pkgs.dockerTools.buildLayeredImage {
-            name = "r-runner-4_0_4";
-            contents = [
-              pkgs.gnumake # Required for install.packages
-              pkgs.time # Required by this project for capturing resource utilization in the container
-              pkgs.busybox # R expects busybox utils
-              pkgs.dockerTools.binSh
-              pkgs.dockerTools.usrBinEnv
-              (pkgs.runCommand "tmp" { } "mkdir -p $out/tmp")
-              (pkgs.runCommand "Rprofile" { } ''
-                mkdir $out
-                echo 'local({r <- getOption("repos"); r["CRAN"] <- "http://cran.us.r-project.org"; options(repos=r)})' > $out/.Rprofile
-              '')
-              ((oldNixpkgs ((import ./dockerfiles/r-versions.nix)."4.0.4")).R)
-            ];
-            config = {
-              Entrypoint = [
-                "${pkgs.busybox}/bin/sh"
-              ];
-            };
-          };
-
-        };
+        } // (builtins.listToAttrs
+          (builtins.map
+            (r-version: {
+              name = "r-runner-${builtins.replaceStrings ["."] ["-"] r-version}";
+              value = r-runner-image r-version;
+            }
+            )
+            (builtins.attrNames r-versions))
+        );
 
         devShells = rec {
           impure-shell = self.packages.${system}."${name}-shell";

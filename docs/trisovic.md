@@ -448,3 +448,5 @@ CN: No statistical tests applied to assess significance.
 CN: "A potential cause may be the use of incompatible library versions in our re-execution step as the R software automatically installs the latest version of a library."
 
 CN: Note that Trisovic et al. defines success rate as the ratio of success to success plus errors (i.e., excluding timed out codes).
+
+nix shell nixpkgs#python310Packages.jupyter nixpkgs#python310Packages.numpy nixpkgs#python310Packages.matplotlib nixpkgs#python310Packages.seaborn nixpkgs#python310Packages.pandas nixpkgs#python310

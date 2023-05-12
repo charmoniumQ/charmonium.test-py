@@ -800,6 +800,18 @@ files = [
 pycparser = "*"
 
 [[package]]
+name = "chardet"
+version = "5.1.0"
+description = "Universal encoding detector for Python 3"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "chardet-5.1.0-py3-none-any.whl", hash = "sha256:362777fb014af596ad31334fde1e8c327dfdb076e1960d1694662d46a6917ab9"},
+    {file = "chardet-5.1.0.tar.gz", hash = "sha256:0d62712b956bc154f85fb0a266e2a3c5913c2967e00348701b32411d6def31e5"},
+]
+
+[[package]]
 name = "charmonium-cache"
 version = "1.4.1"
 description = "Provides a decorator for caching a function between subsequent processes."
@@ -3872,4 +3884,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "f28eab8beb6226727a0992c6c65ed9e26a0e82e6497fac0267fb2b14a38da306"
+content-hash = "37c05f33f2bcbb42ebd3fa6708ead537f24fb5379c646cda381caa38820668b9"

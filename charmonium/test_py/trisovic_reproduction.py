@@ -15,7 +15,6 @@ import charmonium.cache
 from .analyses.measure_command_execution import CompletedContainer, measure_docker_execution
 from .analyses.file_bundle import FileBundle
 from .util import create_temp_dir
-from .dask_utils import load_or_compute_remotely, compute
 from . import config
 
 
@@ -27,7 +26,7 @@ def get_dois() -> list[str]:
 image = "wfregtest.azurecr.io/trisovic-runner:commit-b7171f61-1681765077"
 
 
-@dask.delayed
+@dask.delayed  # type: ignore
 @charmonium.cache.memoize(group=config.memoized_group())
 def analyze(doi: str) -> tuple[CompletedContainer, FileBundle]:
     with create_temp_dir() as temp_dir:
@@ -66,7 +65,7 @@ def get_trisovic_results(r_version: str, env_clean: bool) -> Mapping[str, Mappin
 def get_my_results(first_n: int) -> list[tuple[CompletedContainer, FileBundle]]:
     return cast(
         list[tuple[CompletedContainer, FileBundle]],
-        dask.compute(*(
+        dask.compute(*(  # type: ignore
             globals()["analyze"](doi)
             for doi in get_dois()[:first_n]
         )),

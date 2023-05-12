@@ -1,3 +1,4 @@
+import types
 import tempfile
 import contextlib
 import itertools
@@ -12,7 +13,7 @@ import shlex
 import urllib.parse
 import subprocess
 import xml.etree.ElementTree
-from typing import Generator, Iterable, TypeVar, Any, Mapping, TYPE_CHECKING
+from typing import Generator, Iterable, TypeVar, Any, Mapping, TypeGuard, TYPE_CHECKING, cast
 
 
 def fs_escape(string: str) -> str:
@@ -115,10 +116,10 @@ def hash_path(path: pathlib.Path | str | bytes, size: int = 128) -> int:
     return hasher.intdigest()
 
 
-def expect_type(typ: type[_T], data: Any) -> _T:
+def expect_type(typ: type[_T] | types.UnionType, data: Any) -> _T:
     if not isinstance(data, typ):
-        raise TypeError(f"Expected type {typ} for {data}")
-    return data
+        raise TypeError(f"Expected type {typ} for {data}, but got {type(data)}")
+    return data  # type: ignore
 
 
 def xml_to_tuple(elem: xml.etree.ElementTree.Element) -> tuple[str, Mapping[str, str], str | None, tuple[Any, ...]]:
@@ -166,3 +167,68 @@ else:
     class ignore_arg(wrapt.ObjectProxy):
         def __getfrozenstate__(self) -> None:
             return None
+
+
+from typing import Callable, TypeVar
+from typing_extensions import ParamSpec
+import charmonium.cache
+FuncParams = ParamSpec("FuncParams")
+FuncReturn = TypeVar("FuncReturn")
+def clear_cache(
+        fn: charmonium.cache.Memoized[FuncParams, FuncReturn],
+        *args: FuncParams.args,
+        **kwargs: FuncParams.kwargs,
+) -> None:
+    key, entry, obj_key, value_ser = fn._would_hit(0, *args, **kwargs)
+    if entry is not None:
+        fn.group._deleter((key, entry))
+    assert not fn.would_hit(*args, **kwargs)
+
+
+import re
+from typing import Optional
+def find_last(
+        pattern: re.Pattern[str],
+        haystack: str,
+) -> Optional[re.Match[str]]:
+    original_match = None
+    original_idx = 0
+    while True:
+        next_match = pattern.search(haystack, original_idx)
+        if next_match is None:
+            return original_match
+        else:
+            original_match = next_match
+            original_idx = next_match.start()
+
+
+def is_not_none(x: Optional[_T]) -> TypeGuard[_T]:
+    return x is not None
+
+
+def parse_one_bracketed_expression(
+        string: str,
+        brackets: Mapping[str, str] = {"(": ")"},
+) -> str:
+    if not string:
+        raise SyntaxError("Cannot find bracketed expression from empty string")
+    if string[0] not in brackets:
+        raise SyntaxError(f"String does not start with a bracket: {string}")
+    stack = [string[0]]
+    for i, char in zip(range(1, len(string)), string[1:]):
+        if char in brackets:
+            stack.append(char)
+        elif char == brackets[stack[-1]]:
+            stack.pop()
+        if not stack:
+            return string[1:i]
+    raise SyntaxError(f"Unmatched left-brackets {stack} in {string}")
+
+
+def return_args(function: Callable[FuncParams, FuncReturn]) -> Callable[FuncParams, tuple[FuncParams.args, FuncParams.kwargs, FuncReturn]]:
+    def actual_function(*args: FuncParams.args, **kwargs: FuncParams.kwargs) -> tuple[FuncParams.args, FuncParams.kwargs, FuncReturn]:
+        return (args, kwargs, function(*args, **kwargs))
+    return actual_function
+
+
+assert return_args(fs_escape)("hello world") == (("hello world",), {}, "hello-world")

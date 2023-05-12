@@ -17,7 +17,7 @@ variable "manager_vm_size" {
 
 variable "workers" {
   type    = number
-  default = 10
+  default = 5
 }
 
 variable "worker_disk_size_gb" {
@@ -77,9 +77,8 @@ variable "vm_setup_script" {
     "sudo sed -i 's/#$nrconf{restart} = '\"'\"'i'\"'\"';/$nrconf{restart} = '\"'\"'a'\"'\"';/g' /etc/needrestart/needrestart.conf",
     # Silence MOTD
     "touch ~/.hushlogin",
-    "sudo apt-get update",
-    "sudo apt-get install --yes python3-pip rsync tmux ncurses-term",
 	"curl -sSL https://get.docker.com/ | sudo sh",
+    "sudo apt-get install --yes python3-pip rsync tmux ncurses-term",
     "sudo usermod -aG docker $USER",
     "pip install --no-warn-script-location --user azure-cli",
   ]

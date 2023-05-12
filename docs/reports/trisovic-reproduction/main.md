@@ -132,12 +132,7 @@ The container, given a Dataset ID, invokes a runner script which does the follow
    3. If the hash matches, the attempt was successful, otherwise try another attempt.
 3. If code-cleaning was enabled at container-build time:
    1. For each R file we downloaded:
-      1. Overwrite that script line-by-line.
-      2. For each line:
-         1. If the line looks like it is importing a library, add the target library to a list, and copy that line over.
-         2. If the line looks like a function that is loading a file, make sure the path is relative, and copy that line over.
-         3. If the line calls `setwd`, ignore that line.
-         4. Otherwise, copy the line over.
+      1. Run the code-cleaning operation.
 4. Install packages in R needed for the analysis.
 5. For each R file we downloaded:
    1. Try to run the R file.
@@ -166,7 +161,7 @@ We prioritized these research questions as they relate directly to reproducibili
 
 * **RQ5**: Can automatic code cleaning with small changes to the code aid in its re-execution?
 
-  * The table [@tbl:original] shows that "we see that code cleaning can successfully address some errors" and "there were no cases of code cleaning "breaking" the previously successful code"
+  * The table [@tbl:original] shows that "we see that code cleaning can successfully address some errors" and "there were no cases of code cleaning "breaking" the previously successful code."
 
 * **RQ6**: Are code files designed to be independent of each other or part of a workflow?
 
@@ -209,11 +204,15 @@ Internal discrepancies (ID) include:
 * **ID3:** One Docker image must be prepared for each experimental condition, because the image encodes the experimental condition.
   All things not related to that experimental condition should remain unchanged in the images.
   The images have different versions of the runner script and other important files (see Appendix IIA and IID for proof).
+  <!-- TODO: remove this -->
 
 * **ID4:** The R 3.2 and 3.6 environments request `r` while the R 4.0 environment requests `r-base` (see the original work's [Dockerfile](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/Dockerfile#L18)).
   `r` depends on `r-base` and `r-recommended`.
   Therefore, the 3.2 and 3.6 environment will have packages that the 4.0 environment does not have.
   Some scripts may succeed in R 3.6 and fail in R 4.0, not because of the R version, but because the difference in installed packages.
+
+* **ID5:** There is a bug in the data-processing scripts that cause the number of scripts with "time limit exceeded" to be over-reported.
+  See Appendix IIF for details. 
 
 Non-replicable (NR) aspects include:
 
@@ -244,6 +243,10 @@ For this work, we used Dask [@rocklin_dask_2015] to interface to our Azure VMs, 
 As long as a user can set up a Dask cluster, they can easily import and execute our code.
 Meanwhile, filesystem_spec abstracts the local file system, SSH FS, AWS S3, Azure Storage, and several others.
 
+Our Docker container contains the specified R version, the recommended R packages (Ubuntu and Anaconda both agree on this set), Busybox utilities, GNU Make, and GNU Time.
+
+While we wanted to use the exact versions of R used by the original work, Nix does not have 4.0.1, so we used 4.0.2; there is a bug with Nix's version of R MASS in 3.2.1, so we used 3.2.3.
+
 ## Results
 
 We began with the 2170 datasets listed in the original work's master list, [get-dois/dataset_dois.txt](https://github.com/atrisovic/dataverse-r-study/blob/master/get-dois/dataset_dois.txt).
@@ -256,25 +259,28 @@ The original work also excluded these.
 [^dataverse-wrong-hash]: [Issue #9501 on dataverse GitHub](https://github.com/IQSS/dataverse/issues/9501)
 [^harvard-dataverse-wrong-hash]: [Issue #37 on dataverse.harvard.edu GitHub](https://github.com/IQSS/dataverse.harvard.edu/issues/37)
 
-We augmented the unlabeled table on Page 4 with our results:
+We rephrased the unlabeled table on Page 4[^success-rate] to use proportions relative to the total, and we augmented it with our results:
 
-```
-|                | Without code cleaning     |
-|                |                           |
-|                | Original work | This work |
-|----------------|---------------|-----------|
-| Success rate   | 24%           | 10%       |
-| Successes      | 952           | 795       |
-| Errors         | 2878          | 7489      |
-| Timed outs     | 3829          | 3         |
-| Total files    | 7659          | 8287      |
-| Total datasets | 2071          | 2071      |
-```
+[^success-rate]:
+The percentage in this row is not analogous to the "success rate" in the original work.
+The original work defines "success rate" in their table as the number of successful scripts divided by the number of successes plus failures.
+The percentage here is the number of successful scripts divided by the total.
+Their definition ignores timed out scripts; if we adopt their definition, then our numbers do not change appreciably (we few timeouts), but their success rate is 24%.
+
+<!-- Table -->
 
 The biggest difference is that there are many fewer timed-out scripts.
-The original work applies a time-limit to [DSK: what?]
-Like the original work, we use a one-hour timeout on the whole dataset.
-We also apply a per-script dataset, which woud get _more_ timeouts than the original.
+Both this work and the original work applies a five-hour time-limit to the collection of scripts as a whole and a one-hour time-limit to each individual script (the original work only applies the per-script limit in step 5.1, not in 5.3.1 of the pseudocode; see **ID2** for details).
+It would be surprising if half of the scripts in Harvard Dataverse ran for longer than hour, or five hours combined.
+We have fewer timeouts because the original work was affected by **ID5**, which overreported the number of timeouts.
+Another reason is that the original work does two calls to `install.packages`, which involve compiling C packages for R, quite an expensive operation.
+Our runner does not need this `install.packages` call at all, so it does less work against the time-limit.
+
+Many scripts will call `install.packages`, which will install the latest version of a package.
+However, the latest version is not necessarily compatible with the running version of R.
+`install.packages` does not attempt to solve dependency conflicts.
+For example, the latest version, 3.4.2, of popular plotting package ggplot2 requires R 3.3 or newer.
+When Trisovic et al. ran their experiments in 2020, this may not have been the case.
 
 <!--
 We also tested whether the status of scripts where repeatable over three runs.
@@ -333,7 +339,7 @@ _Source code archive_
 
 ## Appendix II: Bugs in the Trisovic runner script
 
-### A: Bug with `source(...)`
+### A: Bug with `source(...)` causes runner to crash
 
 Many Dataverse R scripts contain `rm(list=ls())`. This is commonly recommended to clean the R environment [@vanpelt_how_2023].
 Unfortunately, this gets `source(..)`ed by `exec_r_files.R`. Note that `rm(...)` and `ls(...)` remove or list variables in the R's global namespace. Then `exec_r_files.R` will fail because it cannot find its own variables.
@@ -343,8 +349,10 @@ The scripts execute in alphabetical order, so `BasSchub_ISQ_Shocks_ClusterRobust
 However, the `BasSchub_ISQ_Shocks_Figures.R` causes a crash and will not appear in the results, for the experiments which have this bug.
 
 3.6-no-cleaning has only the first, so it has this bug (see [`data/run_log_r32_no_env.csv` line 3161](https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/data/run_log_r36_no_env.csv#L3161)).
-4.0-no-cleaning has both entries, so it does not have this bug (see [`data/run_log_r40_no_env.csv line 5259`](https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/data/run_log_r40_no_env.csv#L5259)).
+On the other hand, 4.0-no-cleaning does not have this bug, so it will have results both scripts (see [`data/run_log_r40_no_env.csv line 5259`](https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/data/run_log_r40_no_env.csv#L5259)).
 This explains some of the discrepancies in **ID1** and is further evidence for **ID3**.
+
+<!-- TODO: estimate frequency -->
 
 ### B: Different DOIs and files
 
@@ -367,6 +375,14 @@ The following Python session, which you can run for yourself, shows that differe
 282
 ```
 \normalsize
+
+This may be caused by:
+* transient download errors for one R version but not another;
+* cases where [`./download_datasets.py`](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/download_dataset.py) executes partially, but is interrupted by a timeout from [line 17 of `run_analysis`](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/run_analysis.sh#L17).
+  Note that while other parts of the script ignore some kinds of download errors, they will not ignore this kind of download error for the reasons explained in the last bullet of Appendix IIF.
+* cases where the runner crashes in one R version but not another (one such case is described in Appendix IIA). The return code of the runner is not reported in the original work's dataset, so there is no way to tell on how many cases the runner crashed.
+
+These differences between R versions are exacerbated by different versions of the script, and they make it difficult to compare results across R versions.
 
 ### C: Mismatched versions of R
 
@@ -410,13 +426,73 @@ When there is a new release, the source repository changes its information.
 Changing the line to `apt-get update --allow-releaseinfo-change` allows us to bypass this check.
 Presumably the original work intended to use `continuumio/miniconda3` as a base image, but they use `continuum/miniconda` instead, which has not been updated in three years, since before the last Debian major release.
 
-### F: Published code does not match what is in the Docker images
+### F: Time limit exceeded is overcounted
 
-[`run_analysis.sh line 14`](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/run_analysis.sh#L14) reads `echo '\n' >> ~/.Rprofile`, which echos a _literal_ backslash followed by lowercase en to the Rprofile.
+The Jupyter Notebook [`02-get-combined-success-rates.ipynb`](https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/02-get-combined-success-rates.ipynb) reads tables where each row is a script, and each column has the result of running that file in a specific R version.
+The notebook aggergates the results together, according to rules such as:
+- If a script succeeds in any R version, it is considered to succeed.
+- If a script times out in any R version and none succeed, it is considered to time out.
+- Otherwise, the script is considered to error out.
+
+However there is a bug in that notebook:
+
+1. The notebook [`02-get-combined-success-rates.ipynb`](https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/02-get-combined-success-rates.ipynb), uses an "outer join". Therefore, if a script is absent from one of the R-versions, it will receive NaN in that cell. This occurs in the cells labeled "In[7]" and "In[9]" for the case with code-cleaning, and is duplicated to "In[30]" and "In[32]" for the case without code-cleaning.
+
+  For the sake of example, suppose we have the following results (on different scripts).
+
+  R 3.2 results:
+
+  | File       | Result |
+  |------------|--------|
+  | script0.R  | error  |
+  
+  R 3.6 results:
+  
+  | File       | Result |
+  |------------|--------|
+  | script1.R  | error  |
+  
+  Then the outer merge of R 3.2 and 3.6 would be:
+  
+  | File       | R 3.2 | R 3.6 |
+  |------------|-------|-------|
+  | script0.R  | NaN   | error |
+  | script1.R  | error | NaN   |
+
+2. The cell labeled "In[11]" and "In[34]" assigns the aggregated-result NaN if none of the individual-results are NaN or time-limit-exceeded.
+3. The cells labeled "In[17]" and "In[38]" remove datasets that fail to download, but there are other reasons we will discuss below that can cause a script result to be missing.
+4. The cell labeled "In[23]" and "In[43]" save the result of the preceding steps as `data/aggregate_results_env.csv`.
+5. The cell labeled "In[2]" and "In[5]" of [03-success-dataset-list.ipynb](https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/03-success-dataset-list.ipynb) loads this file, `data/aggregate_results_env.csv`.
+6. The cell labeled "In[4]" and "In[7]" of [03-success-dataset-list.ipynb](https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/03-success-dataset-list.ipynb) counts the number of NaNs in the result column.
+  This number matches exactly what is put in the unlabeled table on page 7 of the prior work's PDF, so we assume this is their provenance.
+
+If the only way that data can be missing is for a time out, then this approach would be valid.
+However, there are other ways that the data may be missing:
+
+* If the runner crashes, it will not write results for some of the scripts.
+  We found one condition which causes the runner to crash in Appendix IIA.
+
+* When the time limit is exceeded, [`run_analysis.sh` line 36](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/run_analysis.sh#L36) writes a record saying saying that a file named "unknown" timed out.
+  When the the script exits with an error, [`exec_r_files.R` line 88](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/exec_r_files.R#L88) will write t  he actual name of the script and the error.
+  Therefore, the outer-join will have two rows indicating a timed out result where it should only have one:
+
+  | File     | R 3.2 | R 3.6     | Result |
+  |----------|-------|-----------|--------|
+  | unknown  | NaN   | timed out | NaN    |
+  | script.R | error | NaN       | NaN    |
+
+* [line 17 of `run_analysis.sh`](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/run_analysis.sh#L17) downloads the dataset from Dataverse with a timeout.
+  When this timeout is hit, line 20 writes a record into `run_log.csv` saying that a file named "unknown" experienced an error called "download error".
+  Like in the previous case, "unknown" will not exist if another R version succeeds in downloading that dataset, which happens quite often in the dataset.
+  While [`02-get-combined-success-rates.ipynb`](https://github.com/atrisovic/dataverse-r-study/blob/master/analysis/02-get-combined-success-rates.ipynb) _does_ exclude download errors found in `run_log_ds.csv`, it does not check for download errors in `run_log.csv`, so it will not exclude this DOI.
+
+<!--
+### Published code does not match what is in the Docker images
+
+[`run_analysis.sh line 14`](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/run_analysis.sh#L14) reads `echo '\n' >> ~/.Rprofile`, which echoes a _literal_ backslash followed by lowercase en to the Rprofile.
 We had to remove this to get R to start successfully.
 This is evidence that the experiments are based on different versions of the code than what is published.
 
-<!--
 Also note that there are only four images in Dockerhub that follow the naming convention (see the original works's Dockerhub [u/atrisovic](https://hub.docker.com/u/atrisovic): `aws-image-r40`, `aws-image-r32`, `aws-image-r36-m`, and `aws-image`), but six experimental conditions (three versions of R, with or without code cleaning).
 Since the R version and code cleaning is baked in to the Docker image, these should require different images.
 -->

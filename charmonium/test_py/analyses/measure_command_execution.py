@@ -160,8 +160,6 @@ def measure_docker_execution(
         # stdout_file.touch()
         # stderr_file.touch()
         real_command = (
-            #"sh",
-            "-c",
             # shlex.join would mess up the \ and > symbols.
             " ".join([
                 # We use the \ to make sure we don't invoke the bash time internal

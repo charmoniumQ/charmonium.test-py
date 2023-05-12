@@ -48,6 +48,18 @@ class File:
             contents=b"",
         )
 
+    def truncate(self) -> File:
+        return File(
+            hash_algo=self.hash_algo,
+            hash_bits=self.hash_bits,
+            hash_val=self.hash_val,
+            size=self.size,
+            file_type=self.file_type,
+            mime_type=self.mime_type,
+            url=self.url,
+            contents=None,
+        )
+
     def __eq__(self, other: object) -> bool:
         if isinstance(other, File):
             if self.hash_algo == other.hash_algo and self.hash_bits == other.hash_bits:
@@ -125,6 +137,15 @@ class FileBundle:
         else:
             # This branch puts all of the files into this object in RAM
             return FileBundle(None, contents)
+
+    def truncate(self, size: int) -> FileBundle:
+        return FileBundle(
+            None,
+            {
+                path: file.truncate() if file.size > size else file
+                for path, file in self.files.items()
+            }
+        )
 
     @staticmethod
     def blank() -> FileBundle:
