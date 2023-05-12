@@ -82,7 +82,14 @@ html-math-method:
 
 ---
 
-# Reproducing "A large-scale study on research code quality and execution"
+# Replicating "A large-scale study on research code quality and execution"
+
+## Abstract
+
+We replicate dataset from "A large-scale study on research code quality and execution" by Trisovic et al. using our own experimental infrastructure.
+Our results agree in part, disagree in part, and extend the original results.
+We designed our experimental infrastructure to be extensible for other kinds of replication studies, where one wants to run a set of codes with a certain interpreter and examine the results.
+WIth insight from the original work and its replication, we attempted to make our infrastructure open-source and reproducible on a large variety of paltforms.
 
 ## Introduction
 

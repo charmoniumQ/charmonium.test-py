@@ -155,14 +155,15 @@
           # );
           });
 
+        # TODO: move this to dockerfiles/flake.nix
         r-versions = {
           # See https://lazamar.co.uk/nix-versions/?channel=nixpkgs-unstable&package=R
           "4.2.2" = "8ad5e8132c5dcf977e308e7bf5517cc6cc0bf7d8";
           "4.0.2" = "5c79b3dda06744a55869cae2cba6873fbbd64394";
-          "3.6.0" =	"bea56ef8ba568d593cd8e8ffd4962c2358732bf4";
+          "3.6.0" = "bea56ef8ba568d593cd8e8ffd4962c2358732bf4";
           "3.2.3" = "92487043aef07f620034af9caa566adecd4a252b";
           "3.2.2" = "42acb5dc55a754ef074cb13e2386886a2a99c483";
-	        "3.2.1" = "b860b106c548e0bcbf5475afe9e47e1d39b1c0e7";
+          "3.2.1" = "b860b106c548e0bcbf5475afe9e47e1d39b1c0e7";
         };
 
         # Read the source of buildLayeredImage for info on how to do stuff:
@@ -174,6 +175,7 @@
             name = "r-runner-${r-version}";
             contents = [
               oldNixpkgs.bash
+              oldNixpkgs.nix # To do grayson_code_cleaning with packages
               oldNixpkgs.time # Required by this project for capturing resource utilization in the container
               # Use `Rscript -e 'isntall.packages("xml2")'` with various packages to check the following:
               # The parnetheses show the Debian package popularity rank

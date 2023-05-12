@@ -33,7 +33,7 @@ def parse_dependencies(line: str) -> str:
     lib = lib.strip('"')
     lib = lib.strip("'")
 
-    return_str = 'if (!require(\"{}\")) install.packages(\"{}\")\n'.format(lib, lib)
+    return_str = 'if (!require(\"{}\")) {{install.packages(\"{}\"); require(\"{}\");}}\n'.format(lib, lib, lib)
 
     if "," in lib: # there are unparced arguments
         return line 
@@ -107,7 +107,7 @@ def parse_packages(line: str) -> list[str]:
     return libs[0].split(",")
 
 
-def main(wd: pathlib.Path) -> None:
+def main(wd: pathlib.Path, _out_dir: pathlib.Path, _log_dir: pathlib.Path) -> None:
     list_of_r_files = [*wd.glob("*.R"), *wd.glob('*.r')]
     list_of_all = list(wd.glob("*"))
 
@@ -123,7 +123,7 @@ def main(wd: pathlib.Path) -> None:
         allcode = r_file.read_bytes()
         encoding, confidence = detect_encoding(allcode)
         if encoding != 'ascii':
-            r_file.write_bytes(allcode.decode(encoding).encode('ascii', 'ignore'))
+            r_file.write_bytes(allcode.decode(encoding).encode('UTF-8', 'ignore'))
 
 
         libraries_no = 0 # libraries per file
@@ -281,4 +281,5 @@ def main(wd: pathlib.Path) -> None:
 
 
 if __name__ == "__main__":
-    main(pathlib.Path(sys.argv[1]).resolve())
+    wd = pathlib.Path(sys.argv[1]).resolve()
+    main(wd, wd, wd)

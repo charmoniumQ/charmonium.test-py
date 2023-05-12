@@ -32,11 +32,11 @@
               packageSet = nix-utils-lib.packageSetRec
                 (self: [
                   (nix-documents-lib.markdownDocument {
-                    src = ./trisovic-reproduction;
+                    src = ./trisovic-replication;
                     main = "main.md";
-                    name = "trisovic-reproduction.pdf";
+                    name = "trisovic-replication.pdf";
                     outputFormat = "pdf";
-                    date = 1665609977; # date +%s
+                    date = 1683922109; # date +%s
                   })
                 ]);
             };

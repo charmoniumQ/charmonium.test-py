@@ -89,7 +89,7 @@ def stream_results(
 
 
     stream = cast(
-        Iterable[tuple[Any, tuple[tuple[Code, Condition, int], Mapping[str, Any], ReducedResult | Exception]]],
+        Iterable[tuple[Any, tuple[tuple[Reduction, Analysis, Code, Condition, int], Mapping[str, Any], ReducedResult | Exception]]],
         distributed.as_completed(  # type: ignore
             dask_client.map(
                 return_args(reduced_analysis),

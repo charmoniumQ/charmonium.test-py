@@ -450,3 +450,24 @@ CN: "A potential cause may be the use of incompatible library versions in our re
 CN: Note that Trisovic et al. defines success rate as the ratio of success to success plus errors (i.e., excluding timed out codes).
 
 nix shell nixpkgs#python310Packages.jupyter nixpkgs#python310Packages.numpy nixpkgs#python310Packages.matplotlib nixpkgs#python310Packages.seaborn nixpkgs#python310Packages.pandas nixpkgs#python310
+
+# Issue with code cleaning
+
+[Line 230 of `set_environment.py`](https://raw.githubusercontent.com/atrisovic/dataverse-r-study/master/docker/set_environment.py#L230) detects if the line is importinga library (e.g., `require(MASS)`). Line 232 (which jumps to line 47) replaces this call with `if (!require(MASS)) install.packages(MASS)`. This detects if `MASS` is installed, and if it is not, installs `MASS`. However, in the case where it is not installed, the code never imports `MASS`! It should have a second `require(MASS)` in the branch where the first one fails: `if (!require(MASS)) {install.packages(MASS); require(MASS);}`.
+
+For a demonstration:
+
+```
+# see https://dataverse.harvard.edu/file.xhtml?persistentId=doi:10.7910/DVN/QWEK63/TJUJYQ&version=1.0
+$ echo 'require(dummies)\nwriteLines(dummy("hello"))' > figures.R
+$ docker run -it --rm --entrypoint bash --volume $PWD:/host
+docker# cp /host/figures.R .
+docker# python2 set_environment.py .
+docker# cat figures.R
+setwd('.')
+
+if (!require("dummies")) install.packages("dummies")
+
+dummy(iris$Species)
+docker# exit
+```

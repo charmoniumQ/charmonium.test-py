@@ -83,15 +83,15 @@ class MyReduction(Reduction):
                     results_path = pathlib.Path(results_str)
                     expected_files = {results_path / "status", results_path / "stdout", results_path / "stderr"}
                     if any(expected_file not in result.outputs.files for expected_file in expected_files):
-                        warnings.append(f"{expected_files - expected_files} not present")
+                        warnings.append(f"{expected_files - set(result.outputs.files)} not present")
                         continue
                     status = int(expect_type(bytes, result.outputs.files[results_path / "status"].contents).decode())
                     stderr = expect_type(bytes, result.outputs.files[results_path / "stderr"].contents).decode(errors="backslashreplace")
                     stdout = expect_type(bytes, result.outputs.files[results_path / "stdout"].contents).decode(errors="backslashreplace")
                     script_results[r_file] = ScriptResult(
                         status=status,
-                        stderr=textwrap.shorten(stderr, 16 * 1024),
-                        stdout=textwrap.shorten(stdout, 2048),
+                        stderr=textwrap.shorten(stderr, 63 * 1024) + stderr[-1024:] if len(stderr) > 64 * 1024 else stderr,
+                        stdout=textwrap.shorten(stdout, 63 * 1024) + stdout[-1024:] if len(stdout) > 64 * 1024 else stdout,
                         events=parse_events(stderr),
                     )
             detailed_result = MyReducedResult(
@@ -304,7 +304,7 @@ def get_overall_classification(
             relevant_results = flatten1([
                 results
                 for condition, results in condition_result_map.items()
-                if expect_type(TrisovicCondition, condition).code_cleaning == code_cleaning
+                if condition.code_cleaning == code_cleaning
             ])
             scripts = set(flatten1(result.script_results.keys() for results in condition_result_map.values() for result in results))
             for script in scripts:
@@ -321,9 +321,9 @@ def get_overall_classification(
                     class_counts[Work.this_work][code_cleaning][ExecutionClass.unknown] += 1
                     unknown_any_cleaning.add((code, script))
     class_counts[Work.this_work][CodeCleaning.trisovic_or_none][ExecutionClass.success] = len(success_any_cleaning)
-    class_counts[Work.this_work][CodeCleaning.trisovic_or_none][ExecutionClass.timed_out] = len(success_any_cleaning - timeout_any_cleaning)
-    class_counts[Work.this_work][CodeCleaning.trisovic_or_none][ExecutionClass.failure] = len(failure_any_cleaning - success_any_cleaning - timeout_any_cleaning)
-    class_counts[Work.this_work][CodeCleaning.trisovic_or_none][ExecutionClass.unknown] = len(unknown_any_cleaning - failure_any_cleaning - success_any_cleaning - timeout_any_cleaning)
+    class_counts[Work.this_work][CodeCleaning.trisovic_or_none][ExecutionClass.timed_out] = len(timeout_any_cleaning - success_any_cleaning)
+    class_counts[Work.this_work][CodeCleaning.trisovic_or_none][ExecutionClass.failure] = len(failure_any_cleaning - timeout_any_cleaning - success_any_cleaning)
+    class_counts[Work.this_work][CodeCleaning.trisovic_or_none][ExecutionClass.unknown] = len(unknown_any_cleaning - failure_any_cleaning - timeout_any_cleaning - success_any_cleaning)
     return class_counts
 
 
@@ -358,10 +358,11 @@ def latex_row(cells: list[str]) -> str:
     return " & ".join(cells) + r" \\"
 
 
-def plaintext_row(cells: list[str], size: int, header: bool = False) -> str:
-    ret = " | ".join(f"{cell: <{size}s}" for cell in cells)
+def plaintext_row(cells: list[str], size: int, header: bool = False, center: bool = False) -> str:
+    alignment = "^" if center else "<"
+    ret = "| " + " | ".join(f"{cell: {alignment}{size}s}" for cell in cells) + " |"
     if header:
-        ret += "\n" + "-|-".join(size * "-")
+        ret += "\n|-" + "-|-".join(size * "-" for cell in cells) + "-|"
     return ret
 
 
@@ -371,6 +372,7 @@ def overall_classification_table(
     code_cleanings = [CodeCleaning.none, CodeCleaning.trisovic, CodeCleaning.trisovic_or_none]
     works = [Work.original_work, Work.this_work]
     classes = [ExecutionClass.success, ExecutionClass.failure, ExecutionClass.timed_out]
+    size = 15
     return "\n".join([
         r"\begin{tabular}{rcccccc}",
         latex_row([
@@ -385,56 +387,57 @@ def overall_classification_table(
             *[translate(work) for work in works * 3],
         ]),
         *[
-            latex_row(
-                [
-                    translate(class_),
-                    *[
-                        percent(
-                            class_map[work][code_cleaning][class_],
-                            sum(
-                                class_map[work][code_cleaning][this_class]
+            latex_row([
+                translate(class_),
+                *[
+                    percent(
+                        class_map[work][code_cleaning][class_],
+                        sum(
+                            class_map[work][code_cleaning][this_class]
                                 for this_class in ExecutionClass
-                            ),
-                            plaintext=False,
-                        )
+                        ),
+                        plaintext=False,
+                    )
                         for code_cleaning in code_cleanings
                         for work in works
-                    ]
                 ]
-            )
+            ])
             for class_ in classes
         ],
         r"\end{tabular}",
+        "",
+        "| " + " " * (size + 1) + plaintext_row([
+            translate(code_cleaning)
+            for code_cleaning in code_cleanings
+        ], size=size * 2 + 3, center=True),
         plaintext_row([
             "",
-            *flatten1([
-                [translate(code_cleaning), ""]
+            *[
+                ""
                 for code_cleaning in code_cleanings
-            ]),
-        ], size=17),
+                for work in works
+            ]
+        ],size=size),
         plaintext_row([
             "",
             *[translate(work) for work in works * 3],
-        ], size=17, header=True),
+        ], size=size, header=True),
         *[
-            plaintext_row(
-                [
-                    translate(class_),
-                    *[
-                        percent(
-                            class_map[work][code_cleaning][class_],
-                            sum(
-                                class_map[work][code_cleaning][this_class]
+            plaintext_row([
+                translate(class_),
+                *[
+                    percent(
+                        class_map[work][code_cleaning][class_],
+                        sum(
+                            class_map[work][code_cleaning][this_class]
                                 for this_class in ExecutionClass
-                            ),
-                            plaintext=True,
-                        )
+                        ),
+                        plaintext=True,
+                    )
                         for code_cleaning in code_cleanings
                         for work in works
-                    ]
-                ],
-                size=17,
-            )
+                ]
+            ], size=size)
             for class_ in classes
         ],
     ])
@@ -457,7 +460,7 @@ def reduction2(
     event_subjects: dict[str, dict[str, dict[str, dict[DataverseDataset, list[str]]]]] = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(list))))
     for code, condition_result_map in code_condition_result_map.items():
         for condition, detailed_results in condition_result_map.items():
-            if condition.r_version == "4.0.2":
+            if condition.r_version == "4.2.2" and condition.code_cleaning == CodeCleaning.trisovic:
                 for detailed_result in detailed_results:
                     for script, script_result in detailed_result.script_results.items():
                         for event in script_result.events:
@@ -471,8 +474,8 @@ def reduction2(
             for key, val_counter in event_subjects[event_kind].items():
                 print(f" {key} ", file=file)
                 for val, example_dois in val_counter.items():
-                    if len(example_dois) >= 2:
-                        print(f"    {len(example_dois)} {val[:100] if val is not None else ''}", file=file)
+                    if val is not None and val.strip() and len(example_dois) >= 2:
+                        print(f"    {len(example_dois)} {val.strip()[:100] if val is not None else ''}", file=file)
                         for code, scripts in example_dois.items():
                             print(f"      {code.persistent_id}: {', '.join(scripts)}", file=file)
 
@@ -498,12 +501,12 @@ def run() -> None:
                 per_script_wall_time_limit=datetime.timedelta(hours=0.4),
                 mem_limit=4 * 1024**3,
             )
-            for r_version in ["3.2.3", "4.0.2"] # 3.6.0
+            for r_version in ["4.0.2", "4.2.2"] # "3.2.3", "3.6.0", "4.0.2"
             for code_cleaning in [CodeCleaning.none, CodeCleaning.trisovic]
         ),
         analysis=ExecuteWorkflow(),
         reduction=MyReduction(),
-        sample_size=10,
+        sample_size=100,
         seed=0,
         n_repetitions=1,
     )
@@ -537,13 +540,13 @@ def run() -> None:
         if isinstance(detailed_result_or_exc, MyReducedResult):
             code_condition_result_map[code][condition].append(detailed_result_or_exc)
 
-        if n % 20 == 0:
+        if n % 1 == 0:
             with open("errors.txt", "w") as fobj:
                 print(experimental_status_by_doi, experimental_status_by_doi.total(), file=fobj)
                 print(experimental_status_by_script, experimental_status_by_script.total(), file=fobj)
                 reduction2(experimental_config, code_condition_result_map, file=fobj)
 
-    with pathlib.Path("errors.txt").open() as fobj:
+    with open("errors.txt", "w") as fobj:
         print(experimental_status_by_doi, experimental_status_by_doi.total(), file=fobj)
         print(experimental_status_by_script, experimental_status_by_script.total(), file=fobj)
         reduction2(experimental_config, code_condition_result_map, file=fobj)

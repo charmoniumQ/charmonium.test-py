@@ -108,9 +108,15 @@ def separate_packages(source: str) -> tuple[str, list[str]]:
     return replace_ranges(source, ranges), packages
 
 
-def main(root: pathlib.Path, fix_paths: bool, fix_packages: bool, fix_order: bool) -> None:
-    r_files = sorted([*root.glob("**/*.R"), *root.glob("**/*.r")])
-    r_file_tuples: list[str] = []
+def main(
+        code_dir: pathlib.Path,
+        out_dir: pathlib.Path,
+        log_dir: pathlib.Path,
+        fix_paths: bool,
+        fix_packages: bool,
+        fix_order: bool,
+) -> None:
+    r_files = sorted([*code_dir.glob("**/*.R"), *code_dir.glob("**/*.r")])
     for r_file in r_files:
         source = decode(r_file.read_bytes())
         if fix_paths:
@@ -118,35 +124,96 @@ def main(root: pathlib.Path, fix_paths: bool, fix_packages: bool, fix_order: boo
             source, abs_to_rel_paths = remove_abs_paths(source)
         if fix_packages:
             source, packages = separate_packages(source)
+            write_nix_flake(packages)
         r_file.write_text(source, encoding="UTF-8")
     if fix_order:
-        raise NotImplementedError()
+        r_script = get_r_script(r_files, code_dir, out_dir)
+        (code_dir / "main_2023_05_11.R").write_text(r_script)
+        (out_dir / "main_2023_05_11.R").write_text(r_script)
+
+
+def write_nix_flake(packages: list[str], r_version: str) -> str:
+    # Repeated from ./flake.nix
+    # TODO: figure out how to not duplicate this
+    nixpkgs = {
+        # See https://lazamar.co.uk/nix-versions/?channel=nixpkgs-unstable&package=R
+        "4.2.2": "8ad5e8132c5dcf977e308e7bf5517cc6cc0bf7d8",
+        "4.0.2": "5c79b3dda06744a55869cae2cba6873fbbd64394",
+        "3.6.0": "bea56ef8ba568d593cd8e8ffd4962c2358732bf4",
+        "3.2.3": "92487043aef07f620034af9caa566adecd4a252b",
+        "3.2.2": "42acb5dc55a754ef074cb13e2386886a2a99c483",
+        "3.2.1": "b860b106c548e0bcbf5475afe9e47e1d39b1c0e7",
+    }
+    ret = """
+{
+  description = "Flake utils demo";
+
+  inputs.flake-utils.url = "github:numtide/flake-utils";
+
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        getOldNixpkgs = nixpkgsGitHash:
+          import (builtins.fetchGit {
+            name = "old-nixpkgs";
+            url = "https://github.com/NixOS/nixpkgs/";
+            ref = "refs/heads/nixpkgs-unstable";
+            rev = nixpkgsGitHash;
+          }) {
+            inherit system;
+          };
+        pkgs = getOldNixpkgs "$nixpkgs_rev"
+        getAttrsIfExists = set: attrs: pkgs.lib.attrsets.filterAttrs (name: value: builtins.elem name attrs) attrs
+      in
+      {
+        devShells.default = pkgs.mkShell {
+          packages = [
+            (pkgs.rWrapper.override {
+              packages = getAttrsIfExists pkgs.rPackages [$packages];
+            })
+          ];
+        };
+    });
+}
+"""
+    return (
+        ret
+        .strip()
+        .replace("$nixpkgs_rev", nixpkgs[r_version])
+        .replace("$packages", " ".join(f"\"{package}\"" for package in packages))
+    )
 
 
 def get_r_script(
         r_files: list[pathlib.Path],
         code_dir: pathlib.Path,
         out_dir: pathlib.Path,
+        condition: TrisovicCondition,
 ) -> str:
     r_file_tuples: list[str] = []
     for r_file in r_files:
         r_file = r_file.relative_to(code_dir)
         r_file_result = out_dir / fs_escape(str(r_file))
         r_file_tuples.append("list({r_file!s}, {r_file_result!s})")
-    return f"failed <- list({', '.join(r_file_tuples)})\n" + """
+    script = """
+    order_file <- order_file_from_python
+    failed <- list(r_file_tuples_from_python)
+    code_dir <- code_dir_from_python
+    timeout <- timeout_from_python
+
     library(subprocess)
+    setwd(code_dir)
     new_successes = TRUE
-    write("", file="order.txt")
-    function()
+    write("", file=order_file)
     while (new_successes) {
         new_failures = list()
         new_successes = FALSE
         for (i in 1:length(failed)) {
-            handle <- spawn_process("timeout", "-k", "30", "1800", "Rscript", failed[[i]][[1]])
+            handle <- spawn_process("timeout", "-k", "30", paste(timeout), "Rscript", failed[[i]][[1]])
             status <- process_wait(handle)
             if (status == 0) {
                 new_successes = TRUE
-                write(paste(failed[[i]][[1]], "\n"), file="order.txt", append=TRUE)
+                write(paste(failed[[i]][[1]], "\n"), file=order_file, append=TRUE)
             } else {
                 list.append(new_failures, failed[[i]])
             }
@@ -159,6 +226,13 @@ def get_r_script(
         failed <- new_failures
     }
     """
+    return (
+        script
+        .replace("order_file_from_python", str(out_dir / "order.txt"))
+        .replace("r_file_tuples_from_python", ', '.join(r_file_tuples))
+        .replace("code_dir_from_python", str(code_dir))
+        .replace("timeout_from_python", str(int(condition.per_script_wall_time_limit.total_seconds())))
+    )
 
 
 # def init_tree_sitter() -> tree_sitter.Parser:
