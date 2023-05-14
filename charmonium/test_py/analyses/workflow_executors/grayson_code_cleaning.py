@@ -5,6 +5,7 @@ import re
 import chardet
 
 from ...util import expect_type, fs_escape, parse_one_bracketed_expression
+from ...conditions import TrisovicCondition
 
 
 def decode(source: bytes) -> str:
@@ -124,10 +125,11 @@ def main(
             source, abs_to_rel_paths = remove_abs_paths(source)
         if fix_packages:
             source, packages = separate_packages(source)
-            write_nix_flake(packages)
+            # write_nix_flake(packages)
         r_file.write_text(source, encoding="UTF-8")
     if fix_order:
-        r_script = get_r_script(r_files, code_dir, out_dir)
+        r_script = ""
+        # r_script = get_r_script(r_files, code_dir, out_dir)
         (code_dir / "main_2023_05_11.R").write_text(r_script)
         (out_dir / "main_2023_05_11.R").write_text(r_script)
 

@@ -123,7 +123,7 @@ def main(wd: pathlib.Path, _out_dir: pathlib.Path, _log_dir: pathlib.Path) -> No
         allcode = r_file.read_bytes()
         encoding, confidence = detect_encoding(allcode)
         if encoding != 'ascii':
-            r_file.write_bytes(allcode.decode(encoding).encode('UTF-8', 'ignore'))
+            r_file.write_bytes(allcode.decode(encoding, "ignore").encode("UTF-8", "ignore"))
 
 
         libraries_no = 0 # libraries per file

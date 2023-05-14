@@ -60,6 +60,7 @@ def reduced_analysis(reduction: Reduction, analysis: Analysis, code: Code, condi
 def stream_results(
         dask_client: distributed.Client,
         experimental_config: Config,
+        randomize_dispatch_order: bool = False,
 ) -> tuple[int, Iterable[tuple[Code, Condition, ReducedResult | Exception]]]:
     codes = list(flatten1(
         get_codes(registry)
@@ -69,24 +70,30 @@ def stream_results(
         random.seed(experimental_config.seed)
         codes = random.sample(codes, experimental_config.sample_size)
 
-    reductions: Iterable[Reduction]
-    analyses: Iterable[Analysis]
-    codes2: Iterable[Code]
-    conditions: Iterable[Condition]
-    iterations: Iterable[int]
-    reductions, analyses, codes2, conditions, iterations = zip(*itertools.product(
+    # Randomly shuffling means that we don't get A0, A1, ..., A100, B0, B1, ... B100, C0, ...
+    # If the analysis is robust to missing data, and requires diverse data (not all A's), it is better to randomize this order
+    product_args = list(itertools.product(
         [experimental_config.reduction],
         [experimental_config.analysis],
         codes,
         experimental_config.conditions,
         range(experimental_config.n_repetitions),
     ))
+    if randomize_dispatch_order:
+        random.seed(experimental_config.seed)
+        random.shuffle(product_args)
+
+    reductions: Iterable[Reduction]
+    analyses: Iterable[Analysis]
+    codes2: Iterable[Code]
+    conditions: Iterable[Condition]
+    iterations: Iterable[int]
+    reductions, analyses, codes2, conditions, iterations = zip(*product_args)
 
     # Put one argument through tqdm to get a progress bar
     # As each code gets consumed, we know one job was submitted
     n_futures = len(codes) * len(experimental_config.conditions) * experimental_config.n_repetitions
     codes3 = tqdm.tqdm(codes2, desc="Jobs submitted", total=n_futures)
-
 
     stream = cast(
         Iterable[tuple[Any, tuple[tuple[Reduction, Analysis, Code, Condition, int], Mapping[str, Any], ReducedResult | Exception]]],
@@ -139,7 +146,7 @@ def get_results(
         list[tuple[Code, Condition, ReducedResult | Exception]],
         list(
             zip(
-                codes,
+                codes2,
                 conditions,
                 dask.compute(*map(  # type: ignore
                     dask.delayed(reduced_analysis),  # type: ignore

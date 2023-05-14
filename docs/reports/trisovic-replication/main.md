@@ -1,6 +1,6 @@
 ---
 # https://pandoc.org/MANUAL.html#general-options-1
-from: markdown+emoji
+from: markdown+emoji+tex_math_dollars
 # For all inputs, see: https://pandoc.org/MANUAL.html#general-options
 # For Markdown variants, see: https://pandoc.org/MANUAL.html#markdown-variants
 # For extensions, see: https://pandoc.org/MANUAL.html#extensions
@@ -149,7 +149,7 @@ The container, given a Dataset ID, invokes a runner script which does the follow
    4. Write results to a log file
 6. Upload log files to a database.
 
-Here we examine the last five (of eight) research questions from the original work.
+Here we examine the research questions four and five research questions from the original work.
 We prioritized these research questions as they relate directly to reproducibility rates.
 
 * **RQ4**: What is the code re-execution rate?
@@ -170,6 +170,7 @@ We prioritized these research questions as they relate directly to reproducibili
 
   * The table [@tbl:original] shows that "we see that code cleaning can successfully address some errors" and "there were no cases of code cleaning "breaking" the previously successful code."
 
+<!--
 * **RQ6**: Are code files designed to be independent of each other or part of a workflow?
 
   * "If there are one or more files that successfully re-executed in a dataset, we mark that dataset as’success’. A dataset that only contains errors is marked as 'error', and datasets with TLE values are removed. In these aggregated results (dataset-level), 45% of the datasets (648 out of 1447) have at least one automatically re-executable R file. There is no drastic difference between the file-level success rate (40%) and the dataset-level success rate (45%), suggesting that the majority of files in a dataset are meant to run independently. However, the success rate would likely be better had we known the execution order."
@@ -187,6 +188,7 @@ We prioritized these research questions as they relate directly to reproducibili
 * **RQ8**: What is the success rate per research field?
 
   * "The highest re-execution rates were observed for the health and life sciences."
+-->
 
 ## Methodology
 
@@ -197,20 +199,24 @@ However, we found that the original work had some internal discrepancies and som
 
 Internal discrepancies (ID) include:
 
-* **ID1:** The raw data from the original work contains a different set of datasets (DOIs) for each experimental condition (see Appendix IIB for proof).
+* **ID1:** The raw data from the original work contains a different set of datasets (DOIs) for each experimental condition (see Appendix IIB) and different scripts for each DOI.
   {#tbl:original} also shows this problem, because there are a different number of "Total datasets" for different verisons of R.
   The choice of datasets-to-test is a controlled variable and should held constant when changing experimental conditions, such as versions of R.
   One possible reason for the change is that the runner script can silently crash, and if it does, it will not output results for files after that point (see Appendix IA for more details).
   We could not find a way to tell if the runner script crashed from the released data.
   Changes in the script between versions (see **ID3**) cause these omissions to be inconsistent between versions.
 
+  When we consulted the authors of the original work about this, they speculated that there were intermittent errors.
+  The original work computes statistics on the set-intersection of the DOIs in each experimental condition.
+  However, even the scripts within a DOI can be reported differently between experimental conditions (see Appendex IIA).
+
 * **ID2:** The runner has two ways of running an R file, 5.1 and 5.3.1 in the above pseudocode.
-  The images uploaded to Dockerhub change the version of R for step 5.1 but not 5.3.1 (see Appendix IIC for proof).
+  The images uploaded to Dockerhub change the version of R for step 5.1 but not 5.3.1 (see Appendix IIC).
   The scripts that fail 5.1 will be rerun in 5.3.1 with the wrong version of R.
 
 * **ID3:** One Docker image must be prepared for each experimental condition, because the image encodes the experimental condition.
   All things not related to that experimental condition should remain unchanged in the images.
-  The images have different versions of the runner script and other important files (see Appendix IIA and IID for proof).
+  The images have different versions of the runner script and other important files (see Appendix IIA and IID).
   <!-- TODO: remove this -->
 
 * **ID4:** The R 3.2 and 3.6 environments request `r` while the R 4.0 environment requests `r-base` (see the original work's [Dockerfile](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/Dockerfile#L18)).
@@ -227,6 +233,8 @@ Non-replicable (NR) aspects include:
   The code uses the latest version of the dataset in Dataverse (see the original work's [download_dataset.py](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/download_dataset.py#L13)).
   Re-executing the code will be analyzing different experiments.
   There is no record of which version the original work used, but one could filter for versions released prior to the approximate date of the experiment.
+  
+  The authors of the original work believe this is desirable because the latest version of the dataset will be the most complete and most likely to work.
 
 * **NR2:** The main script, which is run after the Docker image is built, calls `install.packages(...)`, which installs the latest version of a package at the time of its execution.
   This results in a different software environment in the replication than that in the original work.
@@ -235,6 +243,8 @@ Non-replicable (NR) aspects include:
 
 * **NR3:** Conda may have hosted R 3.2.1 at some point, but it currently does not (see the [Conda R repository](https://anaconda.org/r/r/files) and [Conda Forge repository](https://anaconda.org/conda-forge/r/files)).
   Therefore, the R environment used by the original work cannot be built.
+
+We communicated with the authors about **ID1** and **NR1**.[^Before the camera-ready version, we intend to communicate with the authors on all of these concerns.]
 
 To try to avoid these issues, we decided to do a reproduction instead of a replication.
 
@@ -257,75 +267,60 @@ While we wanted to use the exact versions of R used by the original work, Nix do
 ## Results
 
 We began with the 2170 datasets listed in the original work's master list, [get-dois/dataset_dois.txt](https://github.com/atrisovic/dataverse-r-study/blob/master/get-dois/dataset_dois.txt).
-Note that the results only contain a subset of these (see **ID1**).
+In the interest of time, we took a random sample of size 217, which is one tenth of these DOIs.
+Note that the original work's results only contain a subset of these (see **ID1**), therefore the denominator of the original work will be differnt in different columns.
 
 There is a confirmed issue with Harvard Dataverse where the MD5 hash it displays does not match the file that is available for downloading [^dataverse-wrong-hash] [^harvard-dataverse-wrong-hash].
 This issue affects 18/2170 ~ 1.5% of the datasets, which we removed from consideration.
 The original work also excluded these.
 
+We also tested whether the status of scripts where repeatable over two runs.
+We also excluded the cases where we observed failures with different exception types.
+
 [^dataverse-wrong-hash]: [Issue #9501 on dataverse GitHub](https://github.com/IQSS/dataverse/issues/9501)
 [^harvard-dataverse-wrong-hash]: [Issue #37 on dataverse.harvard.edu GitHub](https://github.com/IQSS/dataverse.harvard.edu/issues/37)
 
-We rephrased the unlabeled table on Page 4[^success-rate] to use proportions relative to the total, and we augmented it with our results:
+\begin{table}
+  \begin{tabular}{rcccccc}
+     & \multicolumn{2}{c}{No code cleaning} & \multicolumn{2}{c}{Trisovic code cleaning} & \multicolumn{2}{c}{Best of both} \\
+     & Original work & This work & Original work & This work & Original work & This work \\
+    Success\footnotemark{} & 12% = 952/7659 & 2% = 5/264 & 20% = 1472/7414 & 5% = 13/264 & 18% = 1581/8609 & 5% = 13/264 \\
+    Failure & 38% = 2878/7659 & 98% = 259/264 & 30% = 2223/7414 & 95% = 251/264 & 14% = 1238/8609 & 95% = 251/264 \\
+    Timed out & 50% = 3829/7659 & 0% = 0/264 & 50% = 3719/7414 & 0% = 0/264 & 67% = 5790/8609 & 0% = 0/264 \\
+  \end{tabular}
+  \caption{This table rephrases the results from the unlabeled table on Page 7 of the original work and displays the analogous result from this work side-by-side. }
+  \label{table:main-results}
+\end{table}
 
-[^success-rate]:
-The percentage in this row is not analogous to the "success rate" in the original work.
-The original work defines "success rate" in their table as the number of successful scripts divided by the number of successes plus failures.
-The percentage here is the number of successful scripts divided by the total.
-Their definition ignores timed out scripts; if we adopt their definition, then our numbers do not change appreciably (we few timeouts), but their success rate is 24%.
+\footnotetext{
+  The percentage in this row is not analogous to the "success rate" in the original work.
+  The original work defines "success rate" in their table as the number of successful scripts divided by the number of successes plus failures.
+  The percentage here is the number of successful scripts divided by the total.
+  Their definition ignores timed out scripts; if we adopt their definition, then our numbers do not change appreciably (we few timeouts), but their success rate is 24%.
+}
 
-<!-- Table -->
+## Discussion
 
-The biggest difference is that there are many fewer timed-out scripts.
+The number of scripts that succeed in this work is markedly lower.
+
+1. Some scripts do not explicitly install their dependencies, but these were by chance found in the environment used in the original work.
+  Depending on how one defines "automatically reproducible", not installing dependencies makes the code not automatically reproducible, even if it may succeed coincidentally in some cases.
+  This work attempts to be more of a "blank slate" to detect these cases, so it is good that those scripts fail in this work.
+
+2. Many scripts will call `install.packages`, which will install the latest version of a package.
+  However, the latest version is not necessarily compatible with the running version of R.
+  `install.packages` does not attempt to solve dependency conflicts.
+  For example, the latest version, 3.4.2, of popular plotting package ggplot2 requires R 3.3 or newer.
+  When Trisovic et al. ran their experiments in 2020, this may not have been the case, so those scripts may have worked.
+
+One major difference is that there are many fewer timed-out scripts.
 Both this work and the original work applies a five-hour time-limit to the collection of scripts as a whole and a one-hour time-limit to each individual script (the original work only applies the per-script limit in step 5.1, not in 5.3.1 of the pseudocode; see **ID2** for details).
 It would be surprising if half of the scripts in Harvard Dataverse ran for longer than hour, or five hours combined.
 We have fewer timeouts because the original work was affected by **ID5**, which overreported the number of timeouts.
 Another reason is that the original work does two calls to `install.packages`, which involve compiling C packages for R, quite an expensive operation.
 Our runner does not need this `install.packages` call at all, so it does less work against the time-limit.
 
-Many scripts will call `install.packages`, which will install the latest version of a package.
-However, the latest version is not necessarily compatible with the running version of R.
-`install.packages` does not attempt to solve dependency conflicts.
-For example, the latest version, 3.4.2, of popular plotting package ggplot2 requires R 3.3 or newer.
-When Trisovic et al. ran their experiments in 2020, this may not have been the case.
-
-<!--
-We also tested whether the status of scripts where repeatable over three runs.
-We excluded the cases where we observed both successes and failures.
-We also excluded the cases where we observed failures with different exception types.
-
-| Observed outcomes              | Percent |
-|--------------------------------|---------|
-| success                        | $X      |
-| fail with same exception       | $X      |
-| success or fail                | $X      |
-| fail with different exceptions | $X      |
-
--->
-
-We also exclude datasets selected by the original work that do not contain any R scripts.
-They may have contained R scripts at the time that the experiments in the original work were executed.
-
-Data analysis differences:
-
-* Apply statistical tests applied to assess significance.
-
-* Note that Trisovic et al. defines success rate as the ratio of success to success plus errors (i.e., excluding timed out codes).
-
-## Discussion
-
-_Can we reproduce the main claims of the paper?_
-* How close can we come?
-* Do the differences matter?
-
-### What was easy
-
-### What was difficult
-
-### Communication with the original authors
-
-### What would we do differently if we were redoing our reproduction from scratch?
-(or maybe this is part of the first two previous subsections?)
+Despite these differences in the baseline rate, code cleaning does in fact improve the success rate with very few downsides.
 
 ## Conclusion
 
@@ -342,7 +337,44 @@ _How to make more things reproducible?_
 
 ## Appendix I: Instructions for reproducing
 
-_Source code archive_
+The source code for this experiment can be found at <https://github.com/charmoniumQ/charmonium.test-py>
+
+First download and install Nix package manager
+
+```
+$ sh <(curl -L https://nixos.org/nix/install) --daemon
+$ mkdir -p ~/.config/nix
+$ echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+```
+
+Then use Nix to get a shell for this project. It should have Python3.11
+
+```
+$ nix develop
+nix-shell$ which python3
+/nix/store/blah
+```
+
+Customize `data_path`, `index_path`, and `dask_client` in `config.py`.
+Note that `upath.UPath` can be a local path, S3 path, SSHFS path, or other storage backends.
+If you wish to run locally, make `dask_client` return `distributed.Client()`.
+If you wish to run on the cloud, make `dask_client` return a client to the cloud's Dask scheduler, and make sure `index_path` and `data_path` are accessible to the Dask workers.
+Run:
+
+```
+$ python3 -c from charmonium.test_py.reproduce_trisovic import run; run()'
+```
+
+This will use the Docker images I built and host publicly.
+If you want to use your own Docker images, set `$DOCKER_REGISTRY` to a registry you can push to.
+Run:
+
+```
+$ ./dockerfiles/build.sh
+$ cat ./dockerfiles/r-runners
+```
+
+And set the value of `./charmonium/test_py/workflow_executors/r_lang.py` to point to the Docker images built in the previous step.
 
 ## Appendix II: Bugs in the Trisovic runner script
 

@@ -1,3 +1,4 @@
+import csv
 import enum
 import pathlib
 import dataclasses
@@ -13,13 +14,16 @@ import datetime
 import itertools
 from typing import Iterable, TypeVar, Any, Callable, Mapping, Sequence, Optional, IO, cast, TYPE_CHECKING
 
-import toolz
+import requests
+import pandas  # type: ignore
+import toolz  # type: ignore
 import charmonium.cache
 import tqdm
 
 from .main import  stream_results, get_results, Config, get_codes
 from .registries import DataverseTrisovicFixed
 from .conditions import TrisovicCondition, CodeCleaning
+from .analyses.file_bundle import File
 from .codes.dataverse_dataset import HashMismatchError
 from .codes import WorkflowCode, DataverseDataset
 from .analyses import ExecuteWorkflow, WorkflowExecution
@@ -59,6 +63,8 @@ class ScriptResult:
         if self.status == 0:
             return ExecutionClass.success
         elif self.status in {124, 128 + 9}:
+            # See `man timeout`
+            # Timeout can exit with 124 or 128+9
             return ExecutionClass.timed_out
         else:
             return ExecutionClass.failure
@@ -68,24 +74,24 @@ class ScriptResult:
 class MyReducedResult(ReducedResult):
     workflow_execution: WorkflowExecution
     script_results: Mapping[str, ScriptResult]
-    warnings: tuple[str, ...]
 
 
 class MyReduction(Reduction):
     def reduce(self, code: Code, condition: Condition, result: Result) -> MyReducedResult:
         if isinstance(result, WorkflowExecution):
-            warnings = []
             script_results: dict[str, ScriptResult] = {}
             results_file = result.outputs.files.get(pathlib.Path("index"), None)
             if results_file is not None and (contents := results_file.contents) is not None:
                 for line in filter(bool, contents.decode().strip().split("\n")):
                     results_str, _space, r_file = line.partition(" ")
                     results_path = pathlib.Path(results_str)
-                    expected_files = {results_path / "status", results_path / "stdout", results_path / "stderr"}
+                    expected_files = {results_path / "stdout", results_path / "stderr"}
                     if any(expected_file not in result.outputs.files for expected_file in expected_files):
-                        warnings.append(f"{expected_files - set(result.outputs.files)} not present")
                         continue
-                    status = int(expect_type(bytes, result.outputs.files[results_path / "status"].contents).decode())
+                    if (status_file := result.outputs.files.get(results_path / "status", None)) is not None:
+                        status = int(expect_type(bytes, status_file.contents).decode())
+                    else:
+                        status = 137
                     stderr = expect_type(bytes, result.outputs.files[results_path / "stderr"].contents).decode(errors="backslashreplace")
                     stdout = expect_type(bytes, result.outputs.files[results_path / "stdout"].contents).decode(errors="backslashreplace")
                     script_results[r_file] = ScriptResult(
@@ -96,12 +102,11 @@ class MyReduction(Reduction):
                     )
             detailed_result = MyReducedResult(
                 workflow_execution=WorkflowExecution(**{  # type: ignore
-                    **dataclasses.asdict(result),
+                    **result.__dict__,
                     "logs": result.logs.truncate(2048),
                     "outputs": result.outputs.truncate(2048),
                 }),
                 script_results=script_results,
-                warnings=tuple(warnings),
             )
             return detailed_result
         else:
@@ -138,16 +143,19 @@ def print_result(result: WorkflowExecution, fobj: None | IO[str] = None) -> None
         )
 
 def get_experimental_status(
-        name: str,
         result: MyReducedResult | Exception,
-        experimental_status_by_doi: collections.Counter[str],
-        experimental_status_by_script: collections.Counter[str],
-) -> None:
-    with open("error_details.txt", "a") as fobj:
+) -> str:
         if isinstance(result, MyReducedResult):
-            # TODO: Fix this if True
-            if True: #result.workflow_execution.proc.exit_code == 0:
-                any_missing_files = False
+            results_file = result.workflow_execution.outputs.files.get(pathlib.Path("index"), None)
+            if result.workflow_execution.proc.exit_code == 0 and results_file is not None:
+                contents = expect_type(bytes, results_file.contents)
+                for line in filter(bool, contents.decode().strip().split("\n")):
+                    results_str, _space, r_file = line.partition(" ")
+                    results_path = pathlib.Path(results_str)
+                    expected_files = {results_path / "status", results_path / "stdout", results_path / "stderr"}
+                    missing_files = expected_files - result.workflow_execution.outputs.files.keys()
+                    if missing_files:
+                        return "missing files"
                 any_failures = False
                 all_successes = True
                 any_files = False
@@ -156,38 +164,22 @@ def get_experimental_status(
                     if script_result.status != 0:
                         any_failures = True
                         all_successes = False
-                        experimental_status_by_script["failure"] += 1
-                        print(f"{name} script failed {r_file}", file=fobj)
-                        print(f"  status: {script_result.status}", file=fobj)
-                        print("  stderr:", file=fobj)
-                        print(textwrap.indent(script_result.stderr, " " * 4), file=fobj)
-                        print("  stdout:", file=fobj)
-                        print(textwrap.indent(script_result.stdout, " " * 4), file=fobj)
                     else:
-                        experimental_status_by_script["successes"] += 1
-                        pass
+                        return "normal"
                 if not any_files:
-                    experimental_status_by_doi["no R scripts"] += 1
-                elif any_missing_files:
-                    experimental_status_by_doi["missing files"] += 1
+                    return "no R files"
                 elif any_failures:
-                    experimental_status_by_doi["all normal; some scripts fail"] += 1
+                    return "normal"
                 elif all_successes:
-                    experimental_status_by_doi["all scripts succeed"] += 1
+                    return "all succeed"
                 else:
                     raise RuntimeError("Exhausted cases")
             else:
-                experimental_status_by_doi["docker command failed"] += 1
-                print(f"{name} docker command failed", file=fobj)
-                print_result(result.workflow_execution, file=fobj)
+                return "docker command failed"
         elif isinstance(result, HashMismatchError):
-            experimental_status_by_doi["hash mismatch"] += 1
-            print(f"{name} hash_mismatch:", file=fobj)
-            print(textwrap.indent(str(result), prefix=" " * 4), sep="\n", file=fobj)
+            return "hash mismatch"
         elif isinstance(result, Exception):
-            experimental_status_by_doi["exception in runner"] += 1
-            print(f"{name} exception {result.__class__.__name__}")
-            print(textwrap.indent("\n".join(traceback.format_exception(result)), prefix=" " * 4))
+            return "exception in runner"
         else:
             raise TypeError(type(result))
 
@@ -250,81 +242,50 @@ def parse_events(error_text: str) -> list[Event]:
     return list(map(toolz.second, sorted(events)))
 
 
-def get_overall_classification(
-    code_condition_result_map: Mapping[DataverseDataset, Mapping[TrisovicCondition, list[MyReducedResult]]],
-) -> Mapping[Work, Mapping[CodeCleaning, Mapping[ExecutionClass, int]]]:
-    class_counts = {
-        Work.original_work: {
-            CodeCleaning.none: {
-                ExecutionClass.success: 952,
-                ExecutionClass.failure: 2878,
-                ExecutionClass.timed_out: 3829,
-                ExecutionClass.unknown: 0,
-            },
-            CodeCleaning.trisovic: {
-                ExecutionClass.success: 1472,
-                ExecutionClass.failure: 2223,
-                ExecutionClass.timed_out: 3719,
-                ExecutionClass.unknown: 0,
-            },
-            CodeCleaning.trisovic_or_none: {
-                ExecutionClass.success: 1581,
-                ExecutionClass.failure: 1238,
-                ExecutionClass.timed_out: 5790,
-                ExecutionClass.unknown: 0,
-            },
-        },
-        Work.this_work: {
-            CodeCleaning.none: {
-                ExecutionClass.success: 0,
-                ExecutionClass.failure: 0,
-                ExecutionClass.timed_out: 0,
-                ExecutionClass.unknown: 0,
-            },
-            CodeCleaning.trisovic: {
-                ExecutionClass.success: 0,
-                ExecutionClass.failure: 0,
-                ExecutionClass.timed_out: 0,
-                ExecutionClass.unknown: 0,
-            },
-            CodeCleaning.trisovic_or_none: {
-                ExecutionClass.success: 0,
-                ExecutionClass.failure: 0,
-                ExecutionClass.timed_out: 0,
-                ExecutionClass.unknown: 0,
-            },
-        },
-    }
-    success_any_cleaning = set[tuple[Code, str]]()
-    timeout_any_cleaning = set[tuple[Code, str]]()
-    failure_any_cleaning = set[tuple[Code, str]]()
-    unknown_any_cleaning = set[tuple[Code, str]]()
-    for code_cleaning in [CodeCleaning.trisovic, CodeCleaning.none]:
-        for code, condition_result_map in code_condition_result_map.items():
-            relevant_results = flatten1([
-                results
-                for condition, results in condition_result_map.items()
-                if condition.code_cleaning == code_cleaning
-            ])
-            scripts = set(flatten1(result.script_results.keys() for results in condition_result_map.values() for result in results))
-            for script in scripts:
-                if any(result.script_results[script].execution_class == ExecutionClass.success for result in relevant_results):
-                    class_counts[Work.this_work][code_cleaning][ExecutionClass.success] += 1
-                    success_any_cleaning.add((code, script))
-                elif any(result.script_results[script].execution_class == ExecutionClass.timed_out for result in relevant_results):
-                    class_counts[Work.this_work][code_cleaning][ExecutionClass.timed_out] += 1
-                    timeout_any_cleaning.add((code, script))
-                elif relevant_results:
-                    class_counts[Work.this_work][code_cleaning][ExecutionClass.failure] += 1
-                    failure_any_cleaning.add((code, script))
-                else:
-                    class_counts[Work.this_work][code_cleaning][ExecutionClass.unknown] += 1
-                    unknown_any_cleaning.add((code, script))
-    class_counts[Work.this_work][CodeCleaning.trisovic_or_none][ExecutionClass.success] = len(success_any_cleaning)
-    class_counts[Work.this_work][CodeCleaning.trisovic_or_none][ExecutionClass.timed_out] = len(timeout_any_cleaning - success_any_cleaning)
-    class_counts[Work.this_work][CodeCleaning.trisovic_or_none][ExecutionClass.failure] = len(failure_any_cleaning - timeout_any_cleaning - success_any_cleaning)
-    class_counts[Work.this_work][CodeCleaning.trisovic_or_none][ExecutionClass.unknown] = len(unknown_any_cleaning - failure_any_cleaning - timeout_any_cleaning - success_any_cleaning)
-    return class_counts
+orig_work_dict = {
+    CodeCleaning.none: {
+        ExecutionClass.success: 952,
+        ExecutionClass.failure: 2878,
+        ExecutionClass.timed_out: 3829,
+        ExecutionClass.unknown: 0,
+    },
+    CodeCleaning.trisovic: {
+        ExecutionClass.success: 1472,
+        ExecutionClass.failure: 2223,
+        ExecutionClass.timed_out: 3719,
+        ExecutionClass.unknown: 0,
+    },
+    CodeCleaning.trisovic_or_none: {
+        ExecutionClass.success: 1581,
+        ExecutionClass.failure: 1238,
+        ExecutionClass.timed_out: 5790,
+        ExecutionClass.unknown: 0,
+    },
+}
+
+
+def get_aggregate_execution_class(
+        script_df: pandas.DataFrame,
+) -> pandas.DataFrame:
+    ret = pandas.DataFrame()
+    for code_cleaning in CodeCleaning:
+        part = (
+            script_df[
+                script_df
+                ["condition"]
+                .apply(lambda condition: condition.code_cleaning) == code_cleaning
+            ]
+            .groupby(["code", "script"])
+            .apply(lambda script_group:
+                   ExecutionClass.success if (script_group["execution_class"] == ExecutionClass.success).any() else
+                   ExecutionClass.timed_out if (script_group["execution_class"] == ExecutionClass.timed_out).any() else
+                   ExecutionClass.failure if (script_group["execution_class"] == ExecutionClass.failure).any() else
+                   ExecutionClass.unknown
+                   )
+        )
+        part["code_cleaning"] = code_cleaning
+        ret = pandas.concat(ret, part)
+    return ret
 
 
 def translate(obj: CodeCleaning | Work | ExecutionClass, extra: None | str = None) -> str:
@@ -448,14 +409,6 @@ def reduction2(
         code_condition_result_map: Mapping[DataverseDataset, Mapping[TrisovicCondition, list[MyReducedResult]]],
         file: Optional[IO[str]],
 ) -> None:
-    for code, condition_result_map in code_condition_result_map.items():
-        if len(condition_result_map) != len(experimental_config.conditions):
-            missing = len(set(experimental_config.conditions) - condition_result_map.keys())
-            print(f"{code.persistent_id} is missing {missing} conditions", file=file)
-        for condition, detailed_results in condition_result_map.items():
-            if len(detailed_results) != experimental_config.n_repetitions:
-                print(f"{code.persistent_id} {condition} is missing repetition", file=file)
-
     event_counter = collections.Counter[str]()
     event_subjects: dict[str, dict[str, dict[str, dict[DataverseDataset, list[str]]]]] = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(list))))
     for code, condition_result_map in code_condition_result_map.items():
@@ -473,20 +426,90 @@ def reduction2(
             print(event_kind, count, file=file)
             for key, val_counter in event_subjects[event_kind].items():
                 print(f" {key} ", file=file)
-                for val, example_dois in val_counter.items():
+                for val, example_dois in sorted(val_counter.items(), key=lambda pair: len(pair[1])):
                     if val is not None and val.strip() and len(example_dois) >= 2:
                         print(f"    {len(example_dois)} {val.strip()[:100] if val is not None else ''}", file=file)
                         for code, scripts in example_dois.items():
-                            print(f"      {code.persistent_id}: {', '.join(scripts)}", file=file)
+                            print(f"      {code.persistent_id}", file=file)
 
-    classification_map = get_overall_classification(code_condition_result_map)
-    print(overall_classification_table(classification_map), file=file)
 
-    for code, condition_result_map in code_condition_result_map.items():
-        for condition, detailed_results in condition_result_map.items():
-            for detailed_result in detailed_results:
-                for warning in detailed_result.warnings:
-                    print(f"Warning: {warning}", file=file)
+@functools.cache
+def get_orig_data(
+        condition: TrisovicCondition,
+) -> Mapping[DataverseDataset, Mapping[str, str]]:
+    url_prefix = "https://raw.githubusercontent.com/atrisovic/dataverse-r-study/master"
+    r_version_str = "".join(condition.r_version.split(".")[:2])
+    env_cleaning_str = "" if condition.env_cleaning else "no_"
+    request = requests.get(f"{url_prefix}/analysis/data/r{r_version_str}_{env_cleaning_str}env.csv")
+    ret: Mapping[DataverseDataset, dict[str, str]] = collections.defaultdict(dict)
+    for row in csv.reader(request.text.split("\n"), delimiter="\t"):
+        ret[DataverseDataset(row[0])][row[1]] = row[2]
+    return ret
+
+
+def compare_with_orig(
+        code_condition_result_map: Mapping[DataverseDataset, Mapping[TrisovicCondition, list[MyReducedResult]]]
+) -> None:
+    raise NotImplementedError
+
+
+def status_update(
+        experimental_config: Config,
+        doi_df: pandas.DataFrame,
+        script_df: pandas.DataFrame,
+) -> None:
+    print(f"{len(doi_df)} dois, {len(script_df)} scripts")
+
+    doi_df["experimental_status"] = doi_df["result"].map(get_experimental_status)
+    print(doi_df["experimental_status"].value_counts())
+
+    script_df["execution_class"] = script_df["result"].map(lambda obj: obj.execution_class)
+    print(script_df["execution_class"].value_counts())
+
+    script_agg_iterations_df = pandas.DataFrame()
+    script_agg_iterations_df["n_observations"] = (
+        script_df
+        .groupby(["r_version", "code_cleaning", "code", "script"], sort=False)
+        .apply(
+            lambda group:
+            len(group)
+        )
+    )
+
+    misfit_mask = script_agg_iterations_df.n_observations != experimental_config.n_repetitions
+    if any(misfit_mask):
+        misfits = script_agg_iterations_df[misfit_mask]
+        for index, _ in misfits.iterrows():
+            print(index, "have only", misfits.loc[index, "n_observations"], "observations!")
+
+    script_agg_iterations_df["deterministic"] = (
+        script_df
+        .groupby(["r_version", "code_cleaning", "code", "script"], sort=False)
+        .apply(
+            lambda group:
+            (
+                group["result"]
+                .apply(lambda result: (result.status, result.stdout.split("\n")[-1], result.stderr.split("\n")[-1]))
+                .nunique()
+            ) == 1
+        )
+    )
+    print("deterministic?", script_agg_iterations_df["deterministic"].value_counts())
+
+    script_agg_r_version_df = pandas.DataFrame()
+    script_agg_r_version_df["aggregated_execution_class"] = (
+        script_df
+        .groupby(["code_cleaning", "code", "script"], sort=False)  # NOT r_version
+        .apply(
+            lambda condition_code_script_df:
+            ExecutionClass.success if (condition_code_script_df["execution_class"] == ExecutionClass.success).any() else
+            ExecutionClass.timed_out if (condition_code_script_df["execution_class"] == ExecutionClass.timed_out).any() else
+            ExecutionClass.failure if (condition_code_script_df["execution_class"] == ExecutionClass.failure).any() else
+            ExecutionClass.unknown
+        )
+        .to_frame(name="execution_class")
+    )
+    script_agg_r_version_df["aggregated_execution_class"].value_counts()
 
 
 def run() -> None:
@@ -501,14 +524,17 @@ def run() -> None:
                 per_script_wall_time_limit=datetime.timedelta(hours=0.4),
                 mem_limit=4 * 1024**3,
             )
-            for r_version in ["4.0.2", "4.2.2"] # "3.2.3", "3.6.0", "4.0.2"
+            # TODO: more R versions
+            for r_version in ["4.0.2", "4.2.2"] # "3.2.3", "3.6.0"
+            # TODO: more code cleanings
             for code_cleaning in [CodeCleaning.none, CodeCleaning.trisovic]
         ),
         analysis=ExecuteWorkflow(),
         reduction=MyReduction(),
-        sample_size=100,
+        sample_size=5,
         seed=0,
-        n_repetitions=1,
+        # TODO: more repetitions
+        n_repetitions=2,
     )
 
     print("Config loaded")
@@ -516,37 +542,51 @@ def run() -> None:
     #all_results = tqdm.tqdm(get_parsed_results(experimental_config))
     # print(f"Got {len(all_results)} results")
 
-    n_results, results_stream = stream_results(dask_client, experimental_config)
-    all_results = tqdm.tqdm(
-        results_stream,
-        desc="jobs completed",
-        total=n_results,
-    )
+    # n_results, results_stream = stream_results(
+    #     dask_client,
+    #     experimental_config,
+    #     randomize_dispatch_order=True,
+    # )
+    # all_results = tqdm.tqdm(
+    #     results_stream,
+    #     desc="jobs completed",
+    #     total=n_results,
+    # )
+    all_results = get_results(experimental_config)
 
-    code_condition_result_map: dict[DataverseDataset, dict[TrisovicCondition, list[MyReducedResult]]] = collections.defaultdict(lambda: collections.defaultdict(list))
-    experimental_status_by_doi = collections.Counter[str]()
-    experimental_status_by_script = collections.Counter[str]()
+    doi_df = pandas.DataFrame()
+    script_df = pandas.DataFrame()
 
     for n, (code, condition, detailed_result_or_exc) in enumerate(all_results):
-        code = expect_type(DataverseDataset, expect_type(WorkflowCode, code).code)
-        condition = expect_type(TrisovicCondition, condition)
-        detailed_result_or_exc = expect_type(MyReducedResult | Exception, detailed_result_or_exc)
-        get_experimental_status(
-            code.persistent_id,
-            detailed_result_or_exc,
-            experimental_status_by_doi,
-            experimental_status_by_script,
-        )
+        doi_df = pandas.concat([
+            doi_df,
+            pandas.DataFrame.from_records(
+                [
+                    {
+                        "code": code.code,
+                        "r_version": condition.r_version,
+                        "code_cleaning": condition.code_cleaning,
+                        "result": detailed_result_or_exc,
+                    }
+                ],
+            ),
+        ])
         if isinstance(detailed_result_or_exc, MyReducedResult):
-            code_condition_result_map[code][condition].append(detailed_result_or_exc)
+            script_df = pandas.concat([
+                script_df,
+                pandas.DataFrame.from_records(
+                    [
+                        {
+                            "code": code.code,
+                            "r_version": condition.r_version,
+                            "code_cleaning": condition.code_cleaning,
+                            "script": script_name,
+                            "result": script_result,
+                        }
+                        for script_name, script_result in detailed_result_or_exc.script_results.items()
+                    ],
+                ),
+            ])
+        # status_update(doi_df, script_df)
 
-        if n % 1 == 0:
-            with open("errors.txt", "w") as fobj:
-                print(experimental_status_by_doi, experimental_status_by_doi.total(), file=fobj)
-                print(experimental_status_by_script, experimental_status_by_script.total(), file=fobj)
-                reduction2(experimental_config, code_condition_result_map, file=fobj)
-
-    with open("errors.txt", "w") as fobj:
-        print(experimental_status_by_doi, experimental_status_by_doi.total(), file=fobj)
-        print(experimental_status_by_script, experimental_status_by_script.total(), file=fobj)
-        reduction2(experimental_config, code_condition_result_map, file=fobj)
+    import IPython; IPython.embed()  # type: ignore

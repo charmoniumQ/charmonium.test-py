@@ -257,7 +257,7 @@ def memoized_group() -> charmonium.cache.MemoizedGroup:
     return charmonium.cache.MemoizedGroup(
         size="200GiB",
         obj_store=charmonium.cache.DirObjStore(path=data_path() / "cache"),
-        fine_grain_persistence=False,
+        fine_grain_persistence=True,
         freeze_config=freeze_config,
         lock=charmonium.cache.NaiveRWLock(AzureLock(
             account_name="wfregtest",
