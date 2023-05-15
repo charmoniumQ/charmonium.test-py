@@ -86,19 +86,19 @@ html-math-method:
 
 ## Abstract
 
-We replicate dataset from "A large-scale study on research code quality and execution" by Trisovic et al. using our own experimental infrastructure.
+We attempt replicate to replace the dataset from "A large-scale study on research code quality and execution" by Trisovic et al. using our own experimental infrastructure.
 Our results agree in part, disagree in part, and extend the original results.
 We designed our experimental infrastructure to be extensible for other kinds of replication studies, where one wants to run a set of codes with a certain interpreter and examine the results.
-WIth insight from the original work and its replication, we attempted to make our infrastructure open-source and reproducible on a large variety of paltforms.
+With insight from the original work and its replication, we have attempted to make our infrastructure open-source and reproducible on a large variety of platforms.
 
 ## Introduction
 
 _Note that this manuscript reads properly on printed media, but the embedded hyperlinks provide references to internet resources for an interested reader._
 
-Reproducibility is essential for scientists to scrutinize each other's results and to build form prior work.
+Reproducibility is essential for scientists to scrutinize each other's results and to build from prior work.
 With the advent of computational experiments in science, it is natural to ask what fraction of those computational experiments are reproducible.
 
-Authors set out to answer this question for specific communities in the past [@pimentel_large-scale_2019, @wang_assessing_2021, @collberg_repeatability_2016, @stodden_empirical_2018, @zhao_why_2012, @trisovic_large-scale_2022].
+Authors have attempted to answer this question for specific communities in the past [@pimentel_large-scale_2019, @wang_assessing_2021, @collberg_repeatability_2016, @stodden_empirical_2018, @zhao_why_2012, @trisovic_large-scale_2022].
 Of these, Collberg et al. [@collberg_repeatability_2016], Stodden et al. [@stodden_empirical_2018], Zhao et al. [@zhao_why_2012], and Trisovic et al. [@trisovic_large-scale_2022] are especially interesting because they study codes used in basic research.
 Of these, Zhao et al. [@zhao_why_2012] and Trisovic et al. [@trisovic_large-scale_2022] are automatic re-execution studies of codes found in repositories that have the explicit purpose of encouraging reproducibility for scientific codes.
 Zhao et al. studied the defunct myExperiment repository while Trisovic et al. studied Harvard Dataverse.
