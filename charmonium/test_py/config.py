@@ -69,16 +69,21 @@ class AzureSyncCredential(azure.identity.DefaultAzureCredential):
 
 
 def data_path() -> pathlib.Path:
-    _data_path = upath.UPath(
-        "abfs://data4/",
-        account_name="wfregtest",
-        credential=AzureAsyncCredential(),
-    )
-    return _data_path
+    if platform.node() == "laptop":
+        return pathlib.Path(".cache")
+    else:
+        return upath.UPath(
+            "abfs://data4/",
+            account_name="wfregtest",
+            credential=AzureAsyncCredential(),
+        )
 
 
 def index_path() -> pathlib.Path:
-    return upath.UPath(
+    if platform.node() == "laptop":
+        return pathlib.Path(".cache")
+    else:
+        return upath.UPath(
         "abfs://index4/",
         account_name="wfregtest",
         credential=AzureAsyncCredential(),
@@ -177,6 +182,18 @@ class AzureLock(charmonium.cache.Lock):
         self.lease = None
 
 
+def get_lock() -> Optional[charmonium.cache.RWLock]:
+    if platform.node() == "laptop":
+        return None
+    else:
+        return charmonium.cache.NaiveRWLock(AzureLock(
+            account_name="wfregtest",
+            container_name="data4",
+            blob_name="index_lock",
+            credential=AzureSyncCredential(),
+        ))
+
+
 @functools.cache
 def memoized_group() -> charmonium.cache.MemoizedGroup:
     freeze_config = copy.deepcopy(charmonium.cache.DEFAULT_FREEZE_CONFIG)
@@ -257,12 +274,7 @@ def memoized_group() -> charmonium.cache.MemoizedGroup:
     return charmonium.cache.MemoizedGroup(
         size="200GiB",
         obj_store=charmonium.cache.DirObjStore(path=data_path() / "cache"),
-        fine_grain_persistence=True,
+        fine_grain_persistence= platform.node() != "laptop",
         freeze_config=freeze_config,
-        lock=charmonium.cache.NaiveRWLock(AzureLock(
-            account_name="wfregtest",
-            container_name="data4",
-            blob_name="index_lock",
-            credential=AzureSyncCredential(),
-        )),
+        lock=get_lock(),
     )

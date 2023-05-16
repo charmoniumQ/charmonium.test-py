@@ -1,6 +1,7 @@
 import toolz  # type: ignore
 import pathlib
 import re
+from typing import Iterable
 
 import chardet
 
@@ -14,30 +15,55 @@ def decode(source: bytes) -> str:
 
 
 def r_expr(string: str) -> str:
+    quotes = {"\"", "'"}
     brackets = {
         "(": ")",
         "[": "]",
         "{": "}",
-        "\"": "\"",
-        "'": "'",
     }
     if not string:
         raise SyntaxError("Cannot find bracketed expression from empty string")
-    if string[0] not in brackets:
-        raise SyntaxError(f"String does not start with a bracket: {string}")
+    if string[0] not in brackets.keys() | quotes:
+        raise SyntaxError(f"String does not start with a bracket or quote: {string}")
     stack = [string[0]]
     for i, char in zip(range(1, len(string)), string[1:]):
         if stack[-1] == "\\":
-            pass
-        elif char == "\\" in stack[-1] in {"'", "\""}:
-            stack.append("\\")
-        elif char in brackets:
-            stack.append(char)
-        elif char == brackets[stack[-1]]:
             stack.pop()
+            assert stack[-1] in quotes
+        elif stack[-1] in quotes:
+            if char == "\\":
+                stack.append("\\")
+            elif stack[-1] in quotes and char == stack[-1]:
+                stack.pop()
+        elif stack[-1] in brackets:
+            if char in (brackets.keys() | quotes):
+                stack.append(char)
+            elif char in brackets.values():
+                if char == brackets[stack[-1]]:
+                    stack.pop()
+                else:
+                    raise SyntaxError(f"Bracket {stack[-1]} does not match {char}")
+        else:
+            raise RuntimeError(f"Unknown stack symbol: {stack[-1]}")
         if not stack:
             return string[0:i+1]
     raise SyntaxError(f"Unmatched left-brackets {stack} in {string}")
+
+
+assert r_expr("(\"hello\", {[\"world\\\"\"]})") == "(\"hello\", {[\"world\\\"\"]})"
+assert r_expr("\"hello\\\"' (world\"") == "\"hello\\\"' (world\""
+try:
+    r_expr("\"hello world\\\"")
+except:
+    pass
+else:
+    assert False
+try:
+    r_expr("(hello world")
+except:
+    pass
+else:
+    assert False
 
 
 def replace_ranges(source: str, ranges: list[tuple[int, int, str]]) -> str:
@@ -58,7 +84,7 @@ def remove_setwd(source: str) -> tuple[str, list[str]]:
     ranges = []
     for match in setwd_pattern.finditer(source):
         setwd_arguments.append(match.group("arg"))
-        ranges.append((match.start("arg"), match.end("arg"), "'.'"))
+        ranges.append((match.start("arg") - 1, match.end("arg") + 1, "'.'"))
     return replace_ranges(source, ranges), setwd_arguments
 
 
@@ -76,7 +102,7 @@ def remove_abs_paths(source: str) -> tuple[str, list[tuple[str, str]]]:
         else:
             replacement = repr(str(path.name))
         path_arguments.append((match.group("abs_path"), replacement))
-        ranges.append((match.start("arg"), match.end("arg"), replacement))
+        ranges.append((match.start("abs_path"), match.end("abs_path"), replacement))
     return replace_ranges(source, ranges), path_arguments
 
 
@@ -87,10 +113,14 @@ assert expect_type(re.Match, library_pattern.match("library(foo)")).group("packa
 assert expect_type(re.Match, library_pattern.match("library('foo')")).group("package") == "foo"
 assert expect_type(re.Match, library_pattern.match("require(foo)")).group("package") == "foo"
 assert expect_type(re.Match, library_pattern.match("require('foo')")).group("package") == "foo"
+colon_separator = re.compile(r"(?P<package>[a-zA-Z0-9]+)::(?P<identifier>\S*)")
+assert expect_type(re.Match, colon_separator.match("foo::bar")).group("package") == "foo"
 maximum_lookahead = 512
 def separate_packages(source: str) -> tuple[str, list[str]]:
     packages = []
     for match in library_pattern.finditer(source):
+        packages.append(match.group("package"))
+    for match in colon_separator.finditer(source):
         packages.append(match.group("package"))
     install_packages_arguments = []
     ranges = []
@@ -102,7 +132,10 @@ def separate_packages(source: str) -> tuple[str, list[str]]:
         # The lexer knows about brackets (...) [...] {...} and strings "..." '...' and escapes within strings "...\"..."
         # The lexer will find the arugment to install.packages, so we can delete the call altogether.
         paren = match.start("paren")
-        install_packages_argument = r_expr(source[paren : paren + maximum_lookahead])
+        try:
+            install_packages_argument = r_expr(source[paren : paren + maximum_lookahead])
+        except SyntaxError as exc:
+            raise RuntimeError("Could not parse:", source[match.start() : paren + maximum_lookahead]) from exc
         install_packages_arguments.append(install_packages_argument)
         assert source[paren : paren + len(install_packages_argument)] == install_packages_argument
         ranges.append((match.start(), paren + len(install_packages_argument), ""))
@@ -110,130 +143,35 @@ def separate_packages(source: str) -> tuple[str, list[str]]:
 
 
 def main(
-        code_dir: pathlib.Path,
-        out_dir: pathlib.Path,
-        log_dir: pathlib.Path,
-        fix_paths: bool,
-        fix_packages: bool,
-        fix_order: bool,
-) -> None:
-    r_files = sorted([*code_dir.glob("**/*.R"), *code_dir.glob("**/*.r")])
-    for r_file in r_files:
-        source = decode(r_file.read_bytes())
-        if fix_paths:
-            source, setwds_removed = remove_setwd(source)
-            source, abs_to_rel_paths = remove_abs_paths(source)
-        if fix_packages:
-            source, packages = separate_packages(source)
-            # write_nix_flake(packages)
-        r_file.write_text(source, encoding="UTF-8")
-    if fix_order:
-        r_script = ""
-        # r_script = get_r_script(r_files, code_dir, out_dir)
-        (code_dir / "main_2023_05_11.R").write_text(r_script)
-        (out_dir / "main_2023_05_11.R").write_text(r_script)
+        r_file: pathlib.Path
+) -> set[str]:
+    source = decode(r_file.read_bytes())
+    source, setwds_removed = remove_setwd(source)
+    source, abs_to_rel_paths = remove_abs_paths(source)
+    source, packages = separate_packages(source)
+    r_file.write_text(source, encoding="UTF-8")
+    return set(packages)
 
 
-def write_nix_flake(packages: list[str], r_version: str) -> str:
+def generate_nix_flake(packages: Iterable[str], r_version: str) -> str:
     # Repeated from ./flake.nix
     # TODO: figure out how to not duplicate this
     nixpkgs = {
         # See https://lazamar.co.uk/nix-versions/?channel=nixpkgs-unstable&package=R
-        "4.2.2": "8ad5e8132c5dcf977e308e7bf5517cc6cc0bf7d8",
-        "4.0.2": "5c79b3dda06744a55869cae2cba6873fbbd64394",
-        "3.6.0": "bea56ef8ba568d593cd8e8ffd4962c2358732bf4",
-        "3.2.3": "92487043aef07f620034af9caa566adecd4a252b",
-        "3.2.2": "42acb5dc55a754ef074cb13e2386886a2a99c483",
-        "3.2.1": "b860b106c548e0bcbf5475afe9e47e1d39b1c0e7",
+        # nix shell nixpkgs#nix-prefetch --command nix-prefetch fetchFromGitHub --owner NixOS --repo nixpkgs --rev 8ad5e8132c5dcf977e308e7bf5517cc6cc0bf7d8
+        "4.2.2": ("8ad5e8132c5dcf977e308e7bf5517cc6cc0bf7d8", "sha256-0gI2FHID8XYD3504kLFRLH3C2GmMCzVMC50APV/kZp8="),
+        "4.0.2": ("5c79b3dda06744a55869cae2cba6873fbbd64394", "sha256-mOTNMphTHk3xEn2v+U9AG94zn+zicQu6hpYdH8vdqY4="),
+        "3.6.0": ("bea56ef8ba568d593cd8e8ffd4962c2358732bf4", "sha256-Ro3e5TxCnju0ssdRu9BgRyOiA3LsCQ3QYmWPefPOLwU="),
+        "3.2.3": ("92487043aef07f620034af9caa566adecd4a252b", "sha256-DNmwVC3DQZNuBiN0rfyL3+TY9hQZx1p7IbhiBeTdzwE="),
+        "3.2.2": ("42acb5dc55a754ef074cb13e2386886a2a99c483", "sha256-20ClstILkFwrSRTAu+7xZjtWyw38JvBNzvy3F/JW2fU="),
+        "3.2.1": ("b860b106c548e0bcbf5475afe9e47e1d39b1c0e7", "sha256-3XyTRKdnqmm03053Ss53RpC69/j178f11pJXk5BFoWE="),
     }
-    ret = """
-{
-  description = "Flake utils demo";
-
-  inputs.flake-utils.url = "github:numtide/flake-utils";
-
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        getOldNixpkgs = nixpkgsGitHash:
-          import (builtins.fetchGit {
-            name = "old-nixpkgs";
-            url = "https://github.com/NixOS/nixpkgs/";
-            ref = "refs/heads/nixpkgs-unstable";
-            rev = nixpkgsGitHash;
-          }) {
-            inherit system;
-          };
-        pkgs = getOldNixpkgs "$nixpkgs_rev"
-        getAttrsIfExists = set: attrs: pkgs.lib.attrsets.filterAttrs (name: value: builtins.elem name attrs) attrs
-      in
-      {
-        devShells.default = pkgs.mkShell {
-          packages = [
-            (pkgs.rWrapper.override {
-              packages = getAttrsIfExists pkgs.rPackages [$packages];
-            })
-          ];
-        };
-    });
-}
-"""
     return (
-        ret
-        .strip()
-        .replace("$nixpkgs_rev", nixpkgs[r_version])
+        (pathlib.Path(__file__).parent / "flake_nix")
+        .read_text()
+        .replace("$nixpkgs_rev", nixpkgs[r_version][0])
+        .replace("$nixpkgs_hash", nixpkgs[r_version][1])
         .replace("$packages", " ".join(f"\"{package}\"" for package in packages))
-    )
-
-
-def get_r_script(
-        r_files: list[pathlib.Path],
-        code_dir: pathlib.Path,
-        out_dir: pathlib.Path,
-        condition: TrisovicCondition,
-) -> str:
-    r_file_tuples: list[str] = []
-    for r_file in r_files:
-        r_file = r_file.relative_to(code_dir)
-        r_file_result = out_dir / fs_escape(str(r_file))
-        r_file_tuples.append("list({r_file!s}, {r_file_result!s})")
-    script = """
-    order_file <- order_file_from_python
-    failed <- list(r_file_tuples_from_python)
-    code_dir <- code_dir_from_python
-    timeout <- timeout_from_python
-
-    library(subprocess)
-    setwd(code_dir)
-    new_successes = TRUE
-    write("", file=order_file)
-    while (new_successes) {
-        new_failures = list()
-        new_successes = FALSE
-        for (i in 1:length(failed)) {
-            handle <- spawn_process("timeout", "-k", "30", paste(timeout), "Rscript", failed[[i]][[1]])
-            status <- process_wait(handle)
-            if (status == 0) {
-                new_successes = TRUE
-                write(paste(failed[[i]][[1]], "\n"), file=order_file, append=TRUE)
-            } else {
-                list.append(new_failures, failed[[i]])
-            }
-            stdout <- process_read(handle, pipe=PIPE_STDOUT, timeout=TIMEOUT_IMMEDIATE, flush=TRUE)
-            stderr <- process_read(handle, pipe=PIPE_STDERR, timeout=TIMEOUT_IMMEDIATE, flush=TRUE)
-            write(stdout, paste(failed[[i]][[2]], "/stdout", sep=""))
-            write(stderr, paste(failed[[i]][[2]], "/stderr", sep=""))
-            write(paste(status), paste(failed[[i]][[2]], "/status", sep=""))
-        }
-        failed <- new_failures
-    }
-    """
-    return (
-        script
-        .replace("order_file_from_python", str(out_dir / "order.txt"))
-        .replace("r_file_tuples_from_python", ', '.join(r_file_tuples))
-        .replace("code_dir_from_python", str(code_dir))
-        .replace("timeout_from_python", str(int(condition.per_script_wall_time_limit.total_seconds())))
     )
 
 

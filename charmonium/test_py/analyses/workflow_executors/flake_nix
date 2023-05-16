@@ -1,0 +1,44 @@
+{
+  description = "Flake utils demo";
+
+  inputs.flake-utils.url = "github:numtide/flake-utils";
+
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+        };
+        getAttrsIfExists = set: attrs: (builtins.map
+          (pair: builtins.elemAt pair 1)
+          (builtins.filter
+            (pair: builtins.elemAt pair 0)
+            (builtins.map
+              (attr: if builtins.hasAttr attr set then [true (builtins.getAttr attr set)] else [false 0])
+              attrs
+            )
+          )
+        );
+        filterBroken = drvs: builtins.filter (drv: !drv.meta.broken) drvs;
+        getOldNixpkgs = nixpkgsRev: nixpkgsHash:
+          (import (pkgs.fetchFromGitHub {
+            owner = "NixOS";
+            repo = "nixpkgs";
+            rev = nixpkgsRev;
+            sha256 = nixpkgsHash;
+          })) {
+            inherit system;
+          };
+        oldpkgs = getOldNixpkgs "$nixpkgs_rev" "$nixpkgs_hash";
+      in
+      {
+        devShells.default = pkgs.mkShell {
+          packages = [
+            (oldpkgs.rWrapper.override {
+              packages = filterBroken (getAttrsIfExists oldpkgs.rPackages [$packages]);
+            })
+          ];
+        };
+      }
+  );
+}

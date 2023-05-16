@@ -107,8 +107,8 @@ def parse_packages(line: str) -> list[str]:
     return libs[0].split(",")
 
 
-def main(wd: pathlib.Path, _out_dir: pathlib.Path, _log_dir: pathlib.Path) -> None:
-    list_of_r_files = [*wd.glob("*.R"), *wd.glob('*.r')]
+def main(r_file: pathlib.Path) -> set[str]:
+    wd = r_file.parent
     list_of_all = list(wd.glob("*"))
 
     total_libraries = 0 # count of dependencies
@@ -117,148 +117,146 @@ def main(wd: pathlib.Path, _out_dir: pathlib.Path, _log_dir: pathlib.Path) -> No
 
     authorization_error = False
 
-    for r_file in list_of_r_files:
-
-        # encode to ascii
-        allcode = r_file.read_bytes()
-        encoding, confidence = detect_encoding(allcode)
-        if encoding != 'ascii':
-            r_file.write_bytes(allcode.decode(encoding, "ignore").encode("UTF-8", "ignore"))
+    # encode to ascii
+    allcode = r_file.read_bytes()
+    encoding, confidence = detect_encoding(allcode)
+    if encoding != 'ascii':
+        r_file.write_bytes(allcode.decode(encoding, "ignore").encode("UTF-8", "ignore"))
 
 
-        libraries_no = 0 # libraries per file
-        comments_no = 0 # count of comments per file
-        lines_no = 0 # count of total lines of code per file
-        func_no = 0 # count of functions 
-        test_no =0 # count of 'test' appearance 
-        class_no=0 # count 'class' appearances
+    libraries_no = 0 # libraries per file
+    comments_no = 0 # count of comments per file
+    lines_no = 0 # count of total lines of code per file
+    func_no = 0 # count of functions 
+    test_no =0 # count of 'test' appearance 
+    class_no=0 # count 'class' appearances
 
-        authorization_error = False
+    authorization_error = False
 
-        for linenum, line in enumerate(fileinput.input(r_file, inplace=True)):
-            lines_no +=1 # increase no of lines
+    for linenum, line in enumerate(fileinput.input(r_file, inplace=True)):
+        lines_no +=1 # increase no of lines
 
-            if "you are not authorized to access this object via this api endpoint" in line:
-                authorization_error = True
-                break
+        if "you are not authorized to access this object via this api endpoint" in line:
+            authorization_error = True
+            break
 
-            if linenum == 0:
-                print("setwd('{}')\n".format(wd))
+        if linenum == 0:
+            print("setwd('{}')\n".format(wd))
 
-            # ignore empty lines
-            if not line.strip():
-                print(line.rstrip())
-                continue
+        # ignore empty lines
+        if not line.strip():
+            print(line.rstrip())
+            continue
 
-            # ===================
-            # = CODE PROPERTIES =
-            # ===================
+        # ===================
+        # = CODE PROPERTIES =
+        # ===================
 
 
-            # if line is commented no point analyzing it
-            if line.strip().startswith('#') or line.strip().startswith('"'):
-                comments_no += 1
-                print(line.rstrip())
-                continue
+        # if line is commented no point analyzing it
+        if line.strip().startswith('#') or line.strip().startswith('"'):
+            comments_no += 1
+            print(line.rstrip())
+            continue
 
-            # count comments elsewhere in code
-            if "#" in line: 
-                comments_no += 1
+        # count comments elsewhere in code
+        if "#" in line: 
+            comments_no += 1
 
-            if "test" in line:
-                test_no += 1
+        if "test" in line:
+            test_no += 1
 
-            # remove white spaces to detect function calls easier
-            temp_line = line.replace(" ", "") 
+        # remove white spaces to detect function calls easier
+        temp_line = line.replace(" ", "") 
 
-            if "<-function(" in temp_line: 
-                func_no += 1
-        
-            if "class(" in temp_line: 
-                class_no += 1
+        if "<-function(" in temp_line: 
+            func_no += 1
 
-            # ===============
-            # = CHANGE CODE =
-            # ===============
+        if "class(" in temp_line: 
+            class_no += 1
 
-            # setwd already set, remove this to avoid absolute paths
-            if "setwd(" in temp_line: 
-                print(line.replace(line, ''))
-                continue
+        # ===============
+        # = CHANGE CODE =
+        # ===============
 
-            if "libraries(" in temp_line:
-                list_of_libs.extend(parse_libraries(line))
+        # setwd already set, remove this to avoid absolute paths
+        if "setwd(" in temp_line: 
+            print(line.replace(line, ''))
+            continue
 
-            if "library(" in temp_line and "install.packages" in line and "#" not in line:
-                libraries_no += 1
-                print(line.rstrip())
+        if "libraries(" in temp_line:
+            list_of_libs.extend(parse_libraries(line))
 
-                list_of_libs.extend(re_findall(r'library\((.*?)\)', line))
-                continue
+        if "library(" in temp_line and "install.packages" in line and "#" not in line:
+            libraries_no += 1
+            print(line.rstrip())
 
-            elif "require" in line and "install.packages" in line and "#" not in line:
-                libraries_no += 1
-                print(line.rstrip())
+            list_of_libs.extend(re_findall(r'library\((.*?)\)', line))
+            continue
 
-                list_of_libs.extend(re_findall(r'require\((.*?)\)', line))
-                continue
+        elif "require" in line and "install.packages" in line and "#" not in line:
+            libraries_no += 1
+            print(line.rstrip())
 
-            elif "library(" in temp_line:
-                libraries_no += 1
-                for match in re.finditer("library", line):
-                    print(line.replace(line, parse_dependencies(line[match.start():])))
+            list_of_libs.extend(re_findall(r'require\((.*?)\)', line))
+            continue
 
-                list_of_libs.extend(re_findall(r'library\((.*?)\)', line))
-                continue
+        elif "library(" in temp_line:
+            libraries_no += 1
+            for match in re.finditer("library", line):
+                print(line.replace(line, parse_dependencies(line[match.start():])))
 
-            elif line.strip().startswith("install.packages"):
-                # install packages should work as is when default CRAN mirror is set
-                libraries_no += 1
-                print(line.rstrip())
+            list_of_libs.extend(re_findall(r'library\((.*?)\)', line))
+            continue
 
-                list_of_libs.extend(re_findall(r'install.packages\((.*?)\)', line))
-                continue
-                
-            elif temp_line.strip().startswith("require("):
-                libraries_no += 1
-                print(line.replace(line, parse_dependencies(line)))
+        elif line.strip().startswith("install.packages"):
+            # install packages should work as is when default CRAN mirror is set
+            libraries_no += 1
+            print(line.rstrip())
 
-                list_of_libs.extend(re_findall(r'require\((.*?)\)', line))
-                continue
+            list_of_libs.extend(re_findall(r'install.packages\((.*?)\)', line))
+            continue
 
-            # find packages that did not qualify for "install.packages"
-            if "packages" in temp_line and "," in temp_line and "(" in temp_line:
-                list_of_libs.extend(parse_packages(line))
+        elif temp_line.strip().startswith("require("):
+            libraries_no += 1
+            print(line.replace(line, parse_dependencies(line)))
 
-            if "file.path(" in temp_line:
-                index = line.find('file.path')
+            list_of_libs.extend(re_findall(r'require\((.*?)\)', line))
+            continue
+
+        # find packages that did not qualify for "install.packages"
+        if "packages" in temp_line and "," in temp_line and "(" in temp_line:
+            list_of_libs.extend(parse_packages(line))
+
+        if "file.path(" in temp_line:
+            index = line.find('file.path')
+            print(line.replace(line, fix_abs_paths(line, index)))
+
+        elif "source(" in temp_line and "/" in line:
+            if "http" not in line:
+                index = line.find('source')+6
+                rest = line[index:]
+                # finding (
+                b = rest.find("(")+1
+                index = index + b
                 print(line.replace(line, fix_abs_paths(line, index)))
 
-            elif "source(" in temp_line and "/" in line:
-                if "http" not in line:
-                    index = line.find('source')+6
-                    rest = line[index:]
-                    # finding (
-                    b = rest.find("(")+1
-                    index = index + b
-                    print(line.replace(line, fix_abs_paths(line, index)))
+        elif "read.csv(" in temp_line and "/" in line:
+            print(line.replace(line, fix_abs_path_in_readcsv(line)))
 
-            elif "read.csv(" in temp_line and "/" in line:
-                print(line.replace(line, fix_abs_path_in_readcsv(line)))
+        else: # for all other lines
+            print(line.rstrip())
 
-            else: # for all other lines
-                print(line.rstrip())
+    # increase total counts
+    total_libraries += libraries_no 
+    total_comments += comments_no
 
-        # increase total counts
-        total_libraries += libraries_no 
-        total_comments += comments_no
-        
-        
-        if not authorization_error:
-            with open('run_log_st1.csv','a') as f:
-                # file_name, total lines, number of comments, number of dependencies
-                f.write("{},{},{},{},{},{},{},{},{}\n".format(r_file, \
-                    lines_no, comments_no, libraries_no, func_no, test_no, class_no, encoding, confidence))
+
+    if not authorization_error:
+        with open('run_log_st1.csv','a') as f:
+            # file_name, total lines, number of comments, number of dependencies
+            f.write("{},{},{},{},{},{},{},{},{}\n".format(r_file, \
+                lines_no, comments_no, libraries_no, func_no, test_no, class_no, encoding, confidence))
 
 
     list_of_libs = [l.replace('"',"") for l in list_of_libs]
@@ -278,8 +276,10 @@ def main(wd: pathlib.Path, _out_dir: pathlib.Path, _log_dir: pathlib.Path) -> No
                 ";".join(str(file.relative_to(wd)) for file in list_of_all),
                 ";".join(set_of_libs),
             ))
+    return set(set_of_libs)
 
 
 if __name__ == "__main__":
     wd = pathlib.Path(sys.argv[1]).resolve()
-    main(wd, wd, wd)
+    for r_file in [*wd.glob("*.R"), *wd.glob('*.r')]:
+        main(r_file)

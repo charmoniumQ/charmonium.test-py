@@ -246,21 +246,44 @@ Non-replicable (NR) aspects include:
 
 We communicated with the authors about **ID1** and **NR1**.[^Before the camera-ready version, we intend to communicate with the authors on all of these concerns.]
 
+### Our infrastructure
+
 To try to avoid these issues, we decided to do a reproduction instead of a replication.
 
-* We run all of the DOIs under every version of R, avoiding **ID1**. We run all scripts in the dataset even if one fails.
-* The original work used the R command, `source(r_file)`, and fell back on the shell command `Rscript r_file` when that failed. TODO: why? We only use `Rscript r_file`. Furthermore, the container for R 4.0 does not contain R 3.6 at all, so there is no chance of confusing versions of R in that container, avoiding **ID2**.
-* We re-executed the code without changing it for all experimental conditions avoiding **ID3** and **ID4**.
-* Our project logs the version of the code that it uses, avoiding **NR1**.
-* Our containers are built using the Nix package manager, which pins the exact version of every dependency used, avoiding **NR2**.
-* Nix can archive all of the sources it pulls from into a replication package, which avoids **NR3**.
+Our experimental infrastructure defines the following class interfaces:
 
+
+
+Our experimental infrastructure contains a function which executes four phases:
+
+1. Get codes from registry. A registry, abstractly, is a list of codes to test. It could be a GitHub repository search query or in this case a fixed list of references to Harvard Dataverse. It returns a `Code` object, which is something that can be downloaded to a directory.
+2. Analyze codes An analysis is any procedure that consumes an experimental condition and a code to produce a result. This could be a static analysis or dynamic analysis. Running the code is a particular example of a dynamic analysis. This execution can be distributed across nodes in a cluster.
+3. Reduce reuslts. The results produced by the analysis could be too big to send back to a single node, so the results are reduced by another step. Decoupling reducing from analyzing means one can revise the reducer without having to re-evaluate the analyzer. This reduction can be distributed as well.
+4. Aggregate results. The reduced results are sent back to a single node and aggregated together.
+
+There are so many codes from Harvard Dataverse to test, that we need to utilize distributed computing, but we do not want our infrastructure to be limited to a specific computing platform.
 The original work uses AWS Batch and AWS DynamoDB, which makes replication more difficult on other platforms.
 For this work, we used Dask [@rocklin_dask_2015] to interface to our Azure VMs, and filesystem_spec [@fsspec_authors_filesystem_spec_2023] to interface with Azure storage buckets.
 As long as a user can set up a Dask cluster, they can easily import and execute our code.
 Meanwhile, filesystem_spec abstracts the local file system, SSH FS, AWS S3, Azure Storage, and several others.
 
-Our Docker container contains the specified R version, the recommended R packages (Ubuntu and Anaconda both agree on this set), Busybox utilities, GNU Make, and GNU Time.
+The above infrastructure is generally applicable to any automatic reproducibility study, so long as the user can provide:
+
+1. A list of registries in which to find codes to test.
+2. A list of experimental conditions to try.
+3. An analysis to run on each experimental condition and code.
+4. A reduction to run on each analysis result.
+5. An aggregation to run on the result of reducing-and-analyzing.
+
+Besides this general infrastructure, we have specific configuration for our case:
+
+We use a Docker container in the analysis step.
+Our Docker image is built by Nix, so it can be bit-by-bit reproduced by other users.
+Our Docker image contains the specified R version, the "recommended" R packages, GNU coreutils, findutils, Make, time, and common system libraries.
+Without common system libraries, such as zlib, almost all of the dataset scripts fail, because the configure scripts of the packages that they install to bootstrap the environment expect certain system libraries (like zlib) to exist.
+The R package manager is not capable of managing system-level libraries in the UNIX Filesystem Hierarchy Standard (FHS), because R runs as user, but the relevant parts of the UNIX FHS is usually owned by root.
+We decided to include all libraries that the scripts depended on (discovered by trial-and-error) that are within the top 5,000 most popular packages according to the Debian Popularity contest.
+This is a reasonable expectation of what real user systems might have installed.
 
 While we wanted to use the exact versions of R used by the original work, Nix does not have 4.0.1, so we used 4.0.2; there is a bug with Nix's version of R MASS in 3.2.1, so we used 3.2.3.
 

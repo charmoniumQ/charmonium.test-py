@@ -96,7 +96,9 @@ ssh \
 echo "## Launch Dask workers"
 
 #workers_per_node=1
-workers_per_node=4
+# For some reason, Dask launches 2 tasks per worker
+# (look at dashboard to see this)
+workers_per_node=3
 first_worker_port=9000
 last_worker_port=$((first_worker_port + workers_per_node))
 first_dashboard_port=9200

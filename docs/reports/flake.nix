@@ -32,11 +32,21 @@
               packageSet = nix-utils-lib.packageSetRec
                 (self: [
                   (nix-documents-lib.markdownDocument {
-                    src = ./trisovic-replication;
+                    src = nix-utils-lib.mergeDerivations {
+                      packageSet = {
+                        "." = ./trisovic-replication;
+                        "template.latex"= ./template.latex;
+                      } // nix-utils-lib.packageSet [ self."class_diagram.svg" ];
+                    };
                     main = "main.md";
                     name = "trisovic-replication.pdf";
                     outputFormat = "pdf";
                     date = 1683922109; # date +%s
+                  })
+                  (nix-documents-lib.plantumlFigure {
+                    src = ./trisovic-replication;
+                    main = "class_diagram.plantuml";
+                    name = "class_diagram.svg";
                   })
                 ]);
             };

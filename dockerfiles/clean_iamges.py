@@ -13,6 +13,9 @@ lines = subprocess.run(["docker", "images", "--all", "--format", "json"], check=
 actual_images = set()
 for line in lines:
     obj = json.loads(line)
-    actual_images.add(obj["Repository"] + ":" + obj["Tag"])
+    if obj["Repository"] in {"r-runners", "main_image", "trisovic_runner_image"}:
+        actual_images.add(obj["Repository"] + ":" + obj["Tag"])
 
-subprocess.run(["docker", "rmi", *(actual_images - used_images)], check=True)
+images_to_remove = actual_images - used_images
+if images_to_remove:
+    subprocess.run(["docker", "rmi", *images_to_remove], check=True)

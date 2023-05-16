@@ -32,6 +32,7 @@
           pkgs.terraform
           pkgs.azure-cli
           pkgs.jq
+          pkgs.sqlite
           #pkgs.diffoscope
         ];
         nix-site-dependencies = [
@@ -161,6 +162,7 @@
           "4.2.2" = "8ad5e8132c5dcf977e308e7bf5517cc6cc0bf7d8";
           "4.0.2" = "5c79b3dda06744a55869cae2cba6873fbbd64394";
           "3.6.0" = "bea56ef8ba568d593cd8e8ffd4962c2358732bf4";
+          "3.2.4" = "c0c50dfcb70d48e5b79c4ae9f1aa9d339af860b4";
           "3.2.3" = "92487043aef07f620034af9caa566adecd4a252b";
           "3.2.2" = "42acb5dc55a754ef074cb13e2386886a2a99c483";
           "3.2.1" = "b860b106c548e0bcbf5475afe9e47e1d39b1c0e7";
@@ -168,82 +170,151 @@
 
         # Read the source of buildLayeredImage for info on how to do stuff:
         # https://github.com/NixOS/nixpkgs/blob/master/pkgs/build-support/docker/default.nix
+        r-runner-contents = r-version:
+          let
+            nixpkgsRev = (builtins.getAttr r-version r-versions);
+            oldNixpkgs = (getOldNixpkgs nixpkgsRev);
+          in [
+            # Required by for this image to work with measure_docker_command:
+            oldNixpkgs.time
+            oldNixpkgs.bash
+
+            # To do grayson_code_cleaning with packages:
+            oldNixpkgs.nix
+
+            # Needed for build infrastructure:
+            # The parnetheses show the Debian package popularity rank
+            oldNixpkgs.stdenv
+            # TODO: figure out how to not write these directly:
+            # Just include everything in oldNixpkgs.stdenv
+
+            oldNixpkgs.which
+            oldNixpkgs.coreutils # (6)
+            oldNixpkgs.gnutar # (9)
+            oldNixpkgs.gnused # (18)
+            oldNixpkgs.findutils # (23)
+            oldNixpkgs.gnugrep # (29)
+            oldNixpkgs.gzip # (30)
+            oldNixpkgs.gawk # (mawk is 59; Nix defaults awk to gawk)
+            oldNixpkgs.diffutils # (70)
+            oldNixpkgs.file # (118)
+            oldNixpkgs.xz # (124)
+            oldNixpkgs.bzip2 # (136)
+            oldNixpkgs.gnumake # (488)
+            # oldNixpkgs.gcc
+            oldNixpkgs.patch # (329)
+            oldNixpkgs.cacert # Needed for any/all HTTPS. Debian doesn't need this, but we do.
+            oldNixpkgs.gitMinimal # (589)
+            # Note that oldNixpkgs for 3.2.3 does not have pkg-config :(
+            oldNixpkgs.pkg-config # (1801) install.packages needs this to find other dependencies
+
+            # Libs:
+            oldNixpkgs.curl
+            oldNixpkgs.curl.dev # (169) R curl links against libcurl
+            oldNixpkgs.zlib
+            oldNixpkgs.zlib.dev # (2132) R httpuv links against libz
+            oldNixpkgs.cmake # (2789)
+            oldNixpkgs.openssl
+            oldNixpkgs.openssl.dev # (2562) R openssl links against libopenssl
+            oldNixpkgs.libxml2
+            oldNixpkgs.libxml2.dev # (3682) R xml2 links against libxml2
+            oldNixpkgs.libpng
+            oldNixpkgs.libpng.dev # (3109)
+            oldNixpkgs.libjpeg
+            oldNixpkgs.libjpeg.dev # 4176
+            oldNixpkgs.udunits # (8375)
+            oldNixpkgs.nlopt # (9360)
+            (oldNixpkgs.rWrapper.override {
+              packages = with oldNixpkgs.rPackages; [
+                # R-recommended according to: https://anaconda.org/r/r-recommended/files
+                KernSmooth
+                MASS
+                Matrix
+                boot
+                class
+                cluster
+                codetools
+                foreign
+                lattice
+                mgcv
+                nlme
+                nnet
+                rpart
+                spatial
+                survival
+              ];
+            })
+          ];
         r-runner-image = r-version:
           let
-            oldNixpkgs = (getOldNixpkgs (builtins.getAttr r-version r-versions));
+            nixpkgsRev = (builtins.getAttr r-version r-versions);
+            oldNixpkgs = (getOldNixpkgs nixpkgsRev);
+            real-contents = (r-runner-contents r-version);
           in pkgs.dockerTools.buildLayeredImage {
-            name = "r-runner-${r-version}";
-            contents = [
-              oldNixpkgs.bash
-              oldNixpkgs.nix # To do grayson_code_cleaning with packages
-              oldNixpkgs.time # Required by this project for capturing resource utilization in the container
-              # Use `Rscript -e 'isntall.packages("xml2")'` with various packages to check the following:
-              # The parnetheses show the Debian package popularity rank
-              pkgs.pkg-config # (1801) install.packages needs this to find other dependencies
-              # Note that oldNixpkgs for 3.2.3 does not have pkg-config :(
-              oldNixpkgs.coreutils # (21) R expects utils like ls
-              oldNixpkgs.findutils # (47)some package install scripts use xargs
-              oldNixpkgs.cacert # Needed for HTTPS
-              oldNixpkgs.gnumake # (864) Required for installing packages
-              oldNixpkgs.gnused # (63) Needed for installing packages
-              oldNixpkgs.gnugrep # (67) Needed for isntalling packages
-              oldNixpkgs.diffutils # (34) Needed for isntalling packages
-              oldNixpkgs.gawk # (415) Needed for isntalling packages
-              oldNixpkgs.cmake # 2789
-              oldNixpkgs.zlib
-              oldNixpkgs.zlib.dev # (2132) R httpuv links against libz
-              oldNixpkgs.curl
-              oldNixpkgs.curl.dev # (169) R curl links against libcurl
-              oldNixpkgs.openssl
-              oldNixpkgs.openssl.dev # (2562) R openssl links against libopenssl
-              oldNixpkgs.libxml2
-              oldNixpkgs.libxml2.dev # (3682) R xml2 links against libxml2
-              oldNixpkgs.libpng
-              oldNixpkgs.libpng.dev # (3109)
-              oldNixpkgs.libjpeg
-              oldNixpkgs.libjpeg.dev # 4176
-              #oldNixpkgs.udunits # (8375)
-              (oldNixpkgs.runCommand "setup" { } ''
+            name = "r-runner-${builtins.replaceStrings ["."] ["-"] r-version}";
+            contents = real-contents ++ [
+              (pkgs.runCommandLocal "setup" { } ''
                 mkdir $out
+
+                # R depends on /tmp
                 mkdir $out/tmp
+
+                # R depends on /usr/bin/env
                 mkdir -p $out/usr/bin/
-                ln -s ${oldNixpkgs.coreutils}/bin/env $out/usr/bin/envp
-                echo -e 'local({r <- getOption("repos");\n  r["CRAN"] <- "http://cran.us.r-project.org";\n  options(repos=r);\n});\n.libPaths("/r-libs");\noptions(warn=1);\n' > $out/.Rprofile
-                mkdir $out/r-libs
-                echo 'source ${oldNixpkgs.cacert}/nix-support/setup-hook' >> $out/.profile
-                echo 'export PKG_CONFIG_PATH=/lib/pkgconfig' >> $out/.profile
-                mkdir $out/.R
-                echo -e "CFLAGS=-I/include\nLDFLAGS=-L/lib\n" >> $out/.R/Makevars
+                ln -s ${oldNixpkgs.coreutils}/bin/env $out/usr/bin/env
+
+                # Make users (root, nobody, nixbld)
+                mkdir $out/etc
+                echo -e 'root:x:0:0:root user:/home/root:/bin/sh\nnixbld1:x:1:1:Build user:/var/empty:/noshell\nnobody:x:65534:65534:nobody:/var/empty:/bin/sh\n' > $out/etc/passwd
+                echo -e 'root:x:0:\nnixbld:x:1:nixbld1\nnobody:x:65534:\n' > $out/etc/group
+                mkdir -p $out/home/root/ $out/var/empty
+
+                # Set up ~/.Rprofile
+                echo -e 'local({r <- getOption("repos");\n  r["CRAN"] <- "http://cran.us.r-project.org";\n  options(repos=r);\n});\n.libPaths("~/.R/lib");\noptions(warn=1);\n' > $out/home/root/.Rprofile
+                mkdir -p $out/home/root/.R/lib
+                echo -e "CFLAGS=-I/include\nLDFLAGS=-L/lib\n" >> $out/home/root/.R/Makevars
+
+                # Enable Nix command and Nix flakes
+                mkdir -p $out/home/root/.config/nix
+                echo "experimental-features = nix-command flakes" >> $out/home/root/.config/nix/nix.conf
+                # We copy a bunch of /nix/store/... paths to the image.
+                # BUT if a /nix/store/... path is not in the Nix DB, Nix doesn't know about it.
+                # Therefore, we will also copy our Nix DB into the image.
+                # If there are paths in the Nix DB that is not in the /nix/store/..., Nix just rebuilds them (no harm, no foul)
+                mkdir -p $out/nix/var/nix/db
+                export USER=root
+
+                echo '${nixpkgsRev}' > $out/nixpkgs_rev
+
+                # Write ~/.profile
+                echo 'source ${oldNixpkgs.cacert}/nix-support/setup-hook' >> $out/home/root/.profile
+                echo 'export PKG_CONFIG_PATH=/lib/pkgconfig' >> $out/home/root/.profile
+                echo 'export USER=root' >> $out/home/root/.profile
               '')
-                #mkdir $out/bin ; ln -s ${oldNixpkgs.bash}/bin/bash $out/bin/sh ; ln -s ${oldNixpkgs.bash}/bin/bash $out/bin/bash
-                #mkdir -p $out/usr/bin ; ln -s ${oldNixpkgs.coreutils}/bin/env $out/usr/bin/env
-              (oldNixpkgs.rWrapper.override {
-                packages = with oldNixpkgs.rPackages; [
-                  # R-recommended according to: https://anaconda.org/r/r-recommended/files
-                  KernSmooth
-                  MASS
-                  Matrix
-                  boot
-                  class
-                  cluster
-                  codetools
-                  foreign
-                  lattice
-                  mgcv
-                  nlme
-                  nnet
-                  rpart
-                  spatial
-                  survival
-                ];
-              })
             ];
+            extraCommands = ''
+              export NIX_REMOTE=local?root=$PWD
+              ${pkgs.buildPackages.nix}/bin/nix-store --verify --check-contents --repair < ${pkgs.closureInfo {rootPaths = real-contents;}}/registration
+            '';
             maxLayers = 125;
+            
             config = {
               Entrypoint = [
                 "/bin/sh" "--login" "-c"
               ];
             };
+            # Tests for this contianer
+            # cd ; pwd # /home/root
+            # nix shell nixpkgs#hello --command hello
+            # pkg-config zlib --libs # should have -L/nix/store/...
+            # Rscript -e 'download.file("https://example.com", "test")'
+            # Rscript -e 'install.packages(c("xml2", "cregg", "dpylr"))' # should go to ~/.R/libs
+            # which cmake awk
+            # Mount /path/to/flake/with/dollar/vars/substituted as /host.
+            # env --chdir /host nix develop --command R --version
+            # This should take <1min
+            # Downloading nixpkgs is necessary, but that should be relatively fast (over HTTPS not git)
+            # It should not be downloading paths that already exist in the store.
           };
       in {
         packages = {

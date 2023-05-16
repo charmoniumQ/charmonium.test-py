@@ -1,0 +1,19 @@
+@startuml
+interface Registry {
+  {method} Iterable<Code> get_codes()
+}
+interface Code {
+  {method} checkout(Path)
+}
+interface Condition {
+}
+interface Analysis {
+  {method} Result analyze(Code, Condition, Path)
+}
+interface Reduction {
+  {method} ReducedResult reduce(Code, Condition, Result)
+}
+interface Aggregation {
+  {method} AggregatedResult aggregate(Iterable<Code, Condition, ReducedResult>)
+}
+@enduml

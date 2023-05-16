@@ -232,3 +232,17 @@ def return_args(function: Callable[FuncParams, FuncReturn]) -> Callable[FuncPara
 
 
 assert return_args(fs_escape)("hello world") == (("hello world",), {}, "hello-world")
+
+
+def shorten_lines(text: str, n_front_lines: int, n_back_lines: int) -> str:
+    lines = text.split("\n")
+    if len(lines) <= n_front_lines + n_back_lines:
+        return "\n".join(lines)
+    else:
+        return "\n".join([
+            *lines[:n_front_lines],
+            "",
+            "[...]"
+            "",
+            *lines[-n_back_lines:],
+        ])
