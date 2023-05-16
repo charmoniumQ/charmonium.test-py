@@ -86,19 +86,19 @@ html-math-method:
 
 ## Abstract
 
-We replicate dataset from "A large-scale study on research code quality and execution" by Trisovic et al. using our own experimental infrastructure.
+We attempt to replicate the dataset from "A large-scale study on research code quality and execution" by Trisovic et al. using our own experimental infrastructure.
 Our results agree in part, disagree in part, and extend the original results.
 We designed our experimental infrastructure to be extensible for other kinds of replication studies, where one wants to run a set of codes with a certain interpreter and examine the results.
-WIth insight from the original work and its replication, we attempted to make our infrastructure open-source and reproducible on a large variety of paltforms.
+With insight from the original work and its replication, we have attempted to make our infrastructure open-source and reproducible on a large variety of platforms.
 
 ## Introduction
 
 _Note that this manuscript reads properly on printed media, but the embedded hyperlinks provide references to internet resources for an interested reader._
 
-Reproducibility is essential for scientists to scrutinize each other's results and to build form prior work.
+Reproducibility is essential for scientists to scrutinize each other's results and to build from prior work.
 With the advent of computational experiments in science, it is natural to ask what fraction of those computational experiments are reproducible.
 
-Authors set out to answer this question for specific communities in the past [@pimentel_large-scale_2019, @wang_assessing_2021, @collberg_repeatability_2016, @stodden_empirical_2018, @zhao_why_2012, @trisovic_large-scale_2022].
+Authors have attempted to answer this question for specific communities in the past [@pimentel_large-scale_2019, @wang_assessing_2021, @collberg_repeatability_2016, @stodden_empirical_2018, @zhao_why_2012, @trisovic_large-scale_2022].
 Of these, Collberg et al. [@collberg_repeatability_2016], Stodden et al. [@stodden_empirical_2018], Zhao et al. [@zhao_why_2012], and Trisovic et al. [@trisovic_large-scale_2022] are especially interesting because they study codes used in basic research.
 Of these, Zhao et al. [@zhao_why_2012] and Trisovic et al. [@trisovic_large-scale_2022] are automatic re-execution studies of codes found in repositories that have the explicit purpose of encouraging reproducibility for scientific codes.
 Zhao et al. studied the defunct myExperiment repository while Trisovic et al. studied Harvard Dataverse.
@@ -115,12 +115,12 @@ In Section 5, we discuss the significance of the results.
 
 ## Original work
 
-In this section, we describe Dataverse, the methodology of the original work, and the results of it.
+In this section, we describe Dataverse, the methodology of the original work, and its results.
 
 _Dataverse_ is a "software platform for sharing, finding, citing, and preserving research data" [@dataverse_community_developers_dataverse_2023], and _Harvard Dataverse_ is a large instance of Dataverse.
-Scientists can upload the code or data used in a publication, where this bundle is called a _dataset_ in Dataverse.
+Scientists can upload the code or data used in a publication; this bundle is called a _dataset_ in Dataverse.
 Datasets can be modified, where each modification gets a new two-number version code (e.g., "1.0").
-Each dataset gets a DOI, which points to the latest version of that dataset.
+Each dataset is given a DOI, which points to the latest version of that dataset.
 
 In "A large-scale study on research code quality and execution" [@trisovic_large-scale_2022] (henceforth, "the original work"), Trisovic et al. studied codes in Harvard Dataverse according to the following pseudocode:
 
@@ -130,7 +130,7 @@ In "A large-scale study on research code quality and execution" [@trisovic_large
       1. For each Dataset identified in step 1.:
          1. Run a container based on that version and code-cleaning with that Dataset ID
 
-The container, given a Dataset ID, invokes a runner script which does the following:
+The container, given a Dataset ID, invokes a runner script that does the following:
 
 1. Download the information for the Dataset.
 2. For each file in listed in the Dataset information:
@@ -149,8 +149,8 @@ The container, given a Dataset ID, invokes a runner script which does the follow
    4. Write results to a log file
 6. Upload log files to a database.
 
-Here we examine the research questions four and five research questions from the original work.
-We prioritized these research questions as they relate directly to reproducibility rates.
+Here we examine research questions four and five from the original work.
+We prioritized looking at these research questions as they relate directly to reproducibility rates.
 
 * **RQ4**: What is the code re-execution rate?
   * The original work gives the following table:
@@ -229,9 +229,9 @@ Internal discrepancies (ID) include:
 
 Non-replicable (NR) aspects include:
 
-* **NR1:** Datasets in Dataverse can upload a new version, which will get the same DOI (e.g., [doi:10.7910/DVN/U3QJQZ](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/U3QJQZ&version=2.0));
+* **NR1:** Datasets in Dataverse can upload a new version, which will be given the same DOI (e.g., [doi:10.7910/DVN/U3QJQZ](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/U3QJQZ&version=2.0));
   The code uses the latest version of the dataset in Dataverse (see the original work's [download_dataset.py](https://github.com/atrisovic/dataverse-r-study/blob/master/docker/download_dataset.py#L13)).
-  Re-executing the code will be analyzing different experiments.
+  Re-executing the code will analyze different experiments.
   There is no record of which version the original work used, but one could filter for versions released prior to the approximate date of the experiment.
   
   The authors of the original work believe this is desirable because the latest version of the dataset will be the most complete and most likely to work.
@@ -239,7 +239,7 @@ Non-replicable (NR) aspects include:
 * **NR2:** The main script, which is run after the Docker image is built, calls `install.packages(...)`, which installs the latest version of a package at the time of its execution.
   This results in a different software environment in the replication than that in the original work.
   In particular, one line of the runner script, `install.packages(reticulate)`, fails when we attempted it, although it presumably worked in the original work's execution in 2020.
-  This is package is installed during the execution of the main script _after_ the image is built, so using the images from Dockerhub will not help this.
+  This package is installed during the execution of the main script _after_ the image is built, so using the images from Dockerhub will not help this.
 
 * **NR3:** Conda may have hosted R 3.2.1 at some point, but it currently does not (see the [Conda R repository](https://anaconda.org/r/r/files) and [Conda Forge repository](https://anaconda.org/conda-forge/r/files)).
   Therefore, the R environment used by the original work cannot be built.
@@ -267,14 +267,14 @@ While we wanted to use the exact versions of R used by the original work, Nix do
 ## Results
 
 We began with the 2170 datasets listed in the original work's master list, [get-dois/dataset_dois.txt](https://github.com/atrisovic/dataverse-r-study/blob/master/get-dois/dataset_dois.txt).
-In the interest of time, we took a random sample of size 217, which is one tenth of these DOIs.
-Note that the original work's results only contain a subset of these (see **ID1**), therefore the denominator of the original work will be differnt in different columns.
+In the interest of time, we took a random sample of one tenth of these datasets (217).
+Note that the original work's results only contain a subset of these (see **ID1**), therefore the denominator of the original work will be different in different columns.
 
 There is a confirmed issue with Harvard Dataverse where the MD5 hash it displays does not match the file that is available for downloading [^dataverse-wrong-hash] [^harvard-dataverse-wrong-hash].
-This issue affects 18/2170 ~ 1.5% of the datasets, which we removed from consideration.
+This issue affects 18/2170 (about 1.5%) of the datasets, which we removed from consideration.
 The original work also excluded these.
 
-We also tested whether the status of scripts where repeatable over two runs.
+We also tested whether the status of scripts were repeatable over two runs.
 We also excluded the cases where we observed failures with different exception types.
 
 [^dataverse-wrong-hash]: [Issue #9501 on dataverse GitHub](https://github.com/IQSS/dataverse/issues/9501)
@@ -294,9 +294,9 @@ We also excluded the cases where we observed failures with different exception t
 
 \footnotetext{
   The percentage in this row is not analogous to the "success rate" in the original work.
-  The original work defines "success rate" in their table as the number of successful scripts divided by the number of successes plus failures.
+  The original work defines "success rate" as the number of successful scripts divided by the number of successes plus failures.
   The percentage here is the number of successful scripts divided by the total.
-  Their definition ignores timed out scripts; if we adopt their definition, then our numbers do not change appreciably (we few timeouts), but their success rate is 24%.
+  Their definition ignores timed out scripts; if we adopt their definition, then our numbers do not change appreciably (we have few timeouts), but their success rate is 24%.
 }
 
 ## Discussion
@@ -314,7 +314,7 @@ The number of scripts that succeed in this work is markedly lower.
   When Trisovic et al. ran their experiments in 2020, this may not have been the case, so those scripts may have worked.
 
 One major difference is that there are many fewer timed-out scripts.
-Both this work and the original work applies a five-hour time-limit to the collection of scripts as a whole and a one-hour time-limit to each individual script (the original work only applies the per-script limit in step 5.1, not in 5.3.1 of the pseudocode; see **ID2** for details).
+Both this work and the original work apply a five-hour time-limit to the collection of scripts as a whole and a one-hour time-limit to each individual script (the original work only applies the per-script limit in step 5.1, not in 5.3.1 of the pseudocode; see **ID2** for details).
 It would be surprising if half of the scripts in Harvard Dataverse ran for longer than hour, or five hours combined.
 We have fewer timeouts because the original work was affected by **ID5**, which overreported the number of timeouts.
 Another reason is that the original work does two calls to `install.packages`, which involve compiling C packages for R, quite an expensive operation.
@@ -324,7 +324,7 @@ Despite these differences in the baseline rate, code cleaning does in fact impro
 
 ## Conclusion
 
-Trisovic et al. establish an important and seminal dataset for large-scale reproducibility studies of modern scientific codes.
+Trisovic et al. established an important and seminal dataset for large-scale reproducibility studies of modern scientific codes.
 We seek to reproduce their work in a way that avoids some internal discrepancies and non-replicability problems.
 Our results partially confirm and partially revise the original work.
 We hope that this dataset and platform for assessing reproducibility serves future work in reproducibility and automatic bug fixing.
